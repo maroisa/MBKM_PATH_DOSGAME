@@ -262,6 +262,7 @@ func _rebuild_files_lists(pattern: String) -> void:
 
 func _make_file_badge(fname: String, is_allow: bool, has_pat: bool, matched: bool, mono: Font) -> PanelContainer:
 	var p := PanelContainer.new()
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var status_note: String = ""
 	var border_col: Color = UiTheme.COL_SUCCESS if is_allow else UiTheme.COL_ERROR

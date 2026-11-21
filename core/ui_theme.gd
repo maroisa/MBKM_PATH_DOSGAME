@@ -332,18 +332,22 @@ static func style_chip_button(btn: Button, selected: bool = false) -> void:
 
 
 static func style_rpg_panel(panel: PanelContainer, pad: float = 14.0) -> void:
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	panel.add_theme_stylebox_override("panel", make_9slice("panel_rpg.png", 9.0, pad, pad, pad))
 
 
 static func style_monitor_panel(panel: PanelContainer, pad: float = 14.0) -> void:
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	panel.add_theme_stylebox_override("panel", make_9slice("panel_monitor.png", 9.0, pad, pad, pad))
 
 
 static func style_gold_panel(panel: PanelContainer, pad: float = 14.0) -> void:
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	panel.add_theme_stylebox_override("panel", make_9slice("panel_gold.png", 9.0, pad, pad, pad))
 
 
 static func style_feedback_panel(panel: PanelContainer, kind: String) -> void:
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	var fname := "panel_feedback_info.png"
 	if kind == "ok":
 		fname = "panel_feedback_ok.png"

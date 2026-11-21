@@ -144,7 +144,7 @@ func _build_ui() -> void:
 	_refresh_sfx_btn()
 
 	# Konten utama dalam ScrollContainer vertikal (zero horizontal overflow)
-	var scroll := ScrollContainer.new()
+	var scroll := TouchScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -191,6 +191,7 @@ func _build_ui() -> void:
 	info_v.add_child(_personal_stats_lbl)
 
 	_progress_bar = ProgressBar.new()
+	_progress_bar.mouse_filter = Control.MOUSE_FILTER_PASS
 	_progress_bar.min_value = 0.0
 	_progress_bar.max_value = 5.0
 	_progress_bar.show_percentage = false
@@ -335,8 +336,13 @@ func _refresh_summary() -> void:
 	if found:
 		var o_rank: int = int(my_info.get("overall_rank", 0))
 		var o_tot: int = int(my_info.get("overall_total", 0))
+		var c_rank: int = int(my_info.get("class_rank", 0))
+		var c_tot: int = int(my_info.get("class_total", 0))
 		var s_avg: float = float(my_info.get("rata_rata", local_avg))
-		_personal_rank_lbl.text = "Kamu rank %d dari %d Peserta" % [o_rank, o_tot]
+		if c_rank > 0 and c_tot > 0:
+			_personal_rank_lbl.text = "Kamu rank %d dari %d Peserta (%s: #%d/%d)" % [o_rank, o_tot, shown_kelas, c_rank, c_tot]
+		else:
+			_personal_rank_lbl.text = "Kamu rank %d dari %d Peserta" % [o_rank, o_tot]
 		_personal_stats_lbl.text = "Rata-rata: %.1f  |  Progres: %d/5 Stage" % [s_avg, done_cnt]
 	else:
 		_personal_rank_lbl.text = "Kamu rank - dari - Peserta"

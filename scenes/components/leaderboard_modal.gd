@@ -122,18 +122,21 @@ func _build_ui() -> void:
 	_personal_detail_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	pv.add_child(_personal_detail_lbl)
 
-	# 3 Tombol Filter: Keseluruhan 1-10, PPLG A, PPLG B
+	# Filter tab sesuai kelas peserta: Keseluruhan 1-10 + kelas milik peserta saja (PPLG A atau PPLG B)
 	var scope_flow := FlowContainer.new()
 	scope_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scope_flow.add_theme_constant_override("h_separation", 8)
 	scope_flow.add_theme_constant_override("v_separation", 6)
 	root_v.add_child(scope_flow)
 
-	for pair: Array in [
-		["overall", "Keseluruhan 1-10"],
-		["pplga", "PPLG A"],
-		["pplgb", "PPLG B"],
-	]:
+	var allowed_scopes: Array[Array] = [["overall", "Keseluruhan 1-10"]]
+	var user_scope: String = _get_user_class_scope()
+	if user_scope == "pplga":
+		allowed_scopes.append(["pplga", "PPLG A"])
+	elif user_scope == "pplgb":
+		allowed_scopes.append(["pplgb", "PPLG B"])
+
+	for pair: Array in allowed_scopes:
 		var sid: String = str(pair[0])
 		var sname: String = str(pair[1])
 		var btn := Button.new()
@@ -150,7 +153,7 @@ func _build_ui() -> void:
 	root_v.add_child(_status_lbl)
 
 	# Daftar Top 10
-	var scroll := ScrollContainer.new()
+	var scroll := TouchScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -184,7 +187,28 @@ func _on_resized() -> void:
 		_hdr_box.vertical = is_comp
 
 
+func _get_user_class_scope() -> String:
+	if not GameSession.has_active_session():
+		return ""
+	var norm: String = GameSession.kelas.to_upper().replace(" ", "")
+	if norm == "PPLGB":
+		return "pplgb"
+	if norm == "PPLGA":
+		return "pplga"
+	return ""
+
+
+func _scope_class_label(scope_id: String) -> String:
+	if scope_id == "pplgb":
+		return "PPLG B"
+	if scope_id == "pplga":
+		return "PPLG A"
+	return "Keseluruhan"
+
+
 func _on_scope_selected(scope_id: String) -> void:
+	if not _scope_buttons.has(scope_id):
+		return
 	AudioManager.play_click()
 	_active_scope = scope_id
 	_render()
@@ -200,6 +224,8 @@ func _on_leaderboard_updated(status: String, data: Dictionary, message: String) 
 
 
 func _render() -> void:
+	if not _scope_buttons.has(_active_scope):
+		_active_scope = "overall"
 	for sid: String in _scope_buttons.keys():
 		UiTheme.style_chip_button(_scope_buttons[sid], sid == _active_scope)
 	_render_personal_card()
@@ -216,39 +242,66 @@ func _render_personal_card() -> void:
 			done_mods += 1
 	local_avg = local_avg / float(maxi(1, done_mods))
 
+	var is_class_scope: bool = (_active_scope == "pplga" or _active_scope == "pplgb")
+	var scope_label: String = _scope_class_label(_active_scope)
+
 	if not GameSession.has_active_session():
 		var total_all: int = int(_lb_data.get("total_overall", 0))
 		var total_txt: String = str(total_all) if total_all > 0 else "-"
-		_personal_rank_lbl.text = "Kamu rank - dari %s Peserta" % total_txt
+		_personal_rank_lbl.text = "Kamu rank - dari %s Peserta (Keseluruhan)" % total_txt
 		_personal_detail_lbl.text = "Isi Nama, Kelas (PPLG A / B), dan Absen di layar masuk agar peringkat pribadimu tercatat."
 		return
 
-	var found: bool = bool(my_info.get("found", false)) and int(my_info.get("overall_rank", 0)) > 0
-	if found:
-		var o_rank: int = int(my_info.get("overall_rank", 0))
-		var o_total: int = int(my_info.get("overall_total", 0))
-		var c_rank: int = int(my_info.get("class_rank", 0))
-		var c_total: int = int(my_info.get("class_total", 0))
-		var s_avg: float = float(my_info.get("rata_rata", local_avg))
-		_personal_rank_lbl.text = "Kamu rank %d dari %d Peserta" % [o_rank, o_total]
-		_personal_detail_lbl.text = "%s (Absen %s) | %s: rank %d dari %d | Rata-rata: %.2f" % [
-			GameSession.nama,
-			GameSession.absen,
-			GameSession.kelas,
-			c_rank,
-			c_total,
-			s_avg
-		]
+	var o_rank: int = int(my_info.get("overall_rank", 0))
+	var o_total: int = int(my_info.get("overall_total", 0))
+	var c_rank: int = int(my_info.get("class_rank", 0))
+	var c_total: int = int(my_info.get("class_total", 0))
+	var s_avg: float = float(my_info.get("rata_rata", local_avg))
+	var found_overall: bool = bool(my_info.get("found", false)) and o_rank > 0
+	var found_class: bool = bool(my_info.get("found", false)) and c_rank > 0
+
+	if is_class_scope:
+		if found_class:
+			_personal_rank_lbl.text = "Kamu rank %d dari %d Peserta (%s)" % [c_rank, c_total, scope_label]
+			_personal_detail_lbl.text = "%s (Absen %s) | Keseluruhan: rank %d dari %d | Rata-rata: %.2f" % [
+				GameSession.nama,
+				GameSession.absen,
+				o_rank,
+				o_total,
+				s_avg
+			]
+		else:
+			var cls_tot_key: String = "total_pplgb" if _active_scope == "pplgb" else "total_pplga"
+			var cls_tot: int = int(_lb_data.get(cls_tot_key, 0))
+			_personal_rank_lbl.text = "Kamu rank - dari %s Peserta (%s)" % [str(cls_tot) if cls_tot > 0 else "-", scope_label]
+			_personal_detail_lbl.text = "%s (%s, Absen %s) | Rata-rata lokal: %.2f (%d/5 stage)." % [
+				GameSession.nama,
+				GameSession.kelas,
+				GameSession.absen,
+				local_avg,
+				done_mods
+			]
 	else:
-		var o_tot: int = int(_lb_data.get("total_overall", 0))
-		_personal_rank_lbl.text = "Kamu rank - dari %s Peserta" % (str(o_tot) if o_tot > 0 else "-")
-		_personal_detail_lbl.text = "%s (%s, Absen %s) | Rata-rata lokal: %.2f (%d/5 stage)." % [
-			GameSession.nama,
-			GameSession.kelas,
-			GameSession.absen,
-			local_avg,
-			done_mods
-		]
+		if found_overall:
+			_personal_rank_lbl.text = "Kamu rank %d dari %d Peserta (Keseluruhan)" % [o_rank, o_total]
+			_personal_detail_lbl.text = "%s (Absen %s) | %s: rank %d dari %d | Rata-rata: %.2f" % [
+				GameSession.nama,
+				GameSession.absen,
+				GameSession.kelas,
+				c_rank,
+				c_total,
+				s_avg
+			]
+		else:
+			var o_tot: int = int(_lb_data.get("total_overall", 0))
+			_personal_rank_lbl.text = "Kamu rank - dari %s Peserta (Keseluruhan)" % (str(o_tot) if o_tot > 0 else "-")
+			_personal_detail_lbl.text = "%s (%s, Absen %s) | Rata-rata lokal: %.2f (%d/5 stage)." % [
+				GameSession.nama,
+				GameSession.kelas,
+				GameSession.absen,
+				local_avg,
+				done_mods
+			]
 
 
 func _render_top10_table() -> void:
@@ -264,8 +317,11 @@ func _render_top10_table() -> void:
 	elif _lb_status == "NO_URL":
 		_status_lbl.text = "[INFO] " + _lb_message
 		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
+	elif _active_scope == "overall":
+		_status_lbl.text = "Top 10 Peringkat Keseluruhan (PPLG A + PPLG B) berdasarkan rata-rata skor tertinggi."
+		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	else:
-		_status_lbl.text = "Menampilkan maksimal 10 peringkat teratas berdasarkan rata-rata skor tertinggi."
+		_status_lbl.text = "Top 10 Peringkat Kelas %s berdasarkan rata-rata skor tertinggi." % _scope_class_label(_active_scope)
 		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 
 	var key_map: Dictionary[String, String] = {

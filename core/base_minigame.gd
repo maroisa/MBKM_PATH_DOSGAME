@@ -18,7 +18,6 @@ var _mission_panel: PanelContainer
 var _mission_label: Label
 var _feedback_box: PanelContainer
 var _feedback_label: Label
-var _hint_btn: Button
 var _scroll: ScrollContainer
 var _content_root: VBoxContainer
 var _footer_panel: PanelContainer
@@ -66,7 +65,7 @@ func _build_shell() -> void:
 	_main_vbox.add_child(_hud)
 
 	# Area kerja tengah (Misi + Monitor/Puzzle + Dek Blok dalam 1 ScrollContainer lega)
-	_scroll = ScrollContainer.new()
+	_scroll = TouchScrollContainer.new()
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -106,13 +105,6 @@ func _build_shell() -> void:
 	_mission_label.add_theme_font_size_override("font_size", 16)
 	_mission_label.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
 	m_top.add_child(_mission_label)
-
-	_hint_btn = Button.new()
-	_hint_btn.text = "PETUNJUK"
-	_hint_btn.visible = false
-	UiTheme.style_blue_button(_hint_btn, "book", true)
-	_hint_btn.pressed.connect(_on_hint_pressed)
-	m_top.add_child(_hint_btn)
 
 	_feedback_box = PanelContainer.new()
 	_feedback_box.visible = false
@@ -217,7 +209,6 @@ func _load_current_level() -> void:
 	_level_solved = false
 	_level_started_unix = Time.get_unix_time_from_system()
 	_mission_label.text = "Misi: " + str(lv.get("mission", ""))
-	_hint_btn.visible = false
 	_feedback_box.visible = false
 	_check_btn.visible = true
 	_check_btn.disabled = false
@@ -298,21 +289,12 @@ func submit_attempt(jawaban_siswa: String, kunci_jawaban: String, is_correct: bo
 		AudioManager.play_error()
 		show_feedback(false, feedback_text)
 		UiTheme.shake_control(_mission_panel, 6.0)
-		if _attempts_on_level >= GameConfig.hint_after_mistakes:
-			_hint_btn.visible = true
 		if not GameConfig.allow_retry:
 			_level_solved = true
 			_check_btn.visible = false
 			_reset_btn.visible = false
 			_next_btn.visible = true
 			_next_btn.grab_focus()
-
-
-func _on_hint_pressed() -> void:
-	AudioManager.play_click()
-	if _current_index < _levels.size():
-		var hint_txt: String = str(_levels[_current_index].get("hint", ""))
-		show_info_feedback("Petunjuk Guru: " + hint_txt)
 
 
 func _advance_level() -> void:
@@ -389,6 +371,8 @@ func _show_completion_summary() -> void:
 		box.add_child(btn_rep)
 
 	_completion_backdrop.visible = true
+	if _margin != null:
+		_margin.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
 	UiTheme.pulse_control(_completion_overlay, 0.92, 0.18)
 	var stars_lit := UiTheme.compute_star_count(score_val, true)
 	for i: int in range(star_row.get_child_count()):

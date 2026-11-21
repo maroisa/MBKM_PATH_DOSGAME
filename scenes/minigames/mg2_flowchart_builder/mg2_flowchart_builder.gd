@@ -45,7 +45,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	UiTheme.style_pixel_heading(_flow_title_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
 	flow_v.add_child(_flow_title_lbl)
 
-	_flow_scroll = ScrollContainer.new()
+	_flow_scroll = TouchScrollContainer.new()
 	_flow_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_flow_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_flow_scroll.custom_minimum_size = Vector2(0.0, 200.0)
@@ -80,7 +80,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	UiTheme.style_pixel_heading(crt_title, 16, UiTheme.COL_INFO)
 	crt_v.add_child(crt_title)
 
-	_sim_scroll = ScrollContainer.new()
+	_sim_scroll = TouchScrollContainer.new()
 	_sim_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sim_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_sim_scroll.custom_minimum_size = Vector2(0.0, 200.0)

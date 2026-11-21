@@ -5,19 +5,71 @@
  * Sheet yang dikelola:
  * 1. PPLGA            -> Nilai Game 1..5 & Rata-rata kelas PPLG A
  * 2. PPLGB            -> Nilai Game 1..5 & Rata-rata kelas PPLG B
- * 3. HasilKeseluruhan -> Otomatis terisi rumus QUERY(VSTACK(PPLGA; PPLGB))
- * 4. LeaderBoard      -> Otomatis terisi rumus Top 10 dari HasilKeseluruhan
+ * 3. HasilKeseluruhan -> Otomatis disinkronkan dari gabungan PPLGA + PPLGB
+ * 4. LeaderBoard      -> Otomatis disinkronkan Top 10 dari HasilKeseluruhan
  * 5. LogJawaban       -> Riwayat detail jawaban siswa dari awal hingga akhir
  *
- * Cara Deploy:
- * 1. Buka Spreadsheet -> Extensions -> Apps Script.
- * 2. Tempel seluruh kode ini -> Save.
- * 3. Deploy -> New deployment -> Web app -> Execute as: Me -> Who has access: Anyone.
- * 4. Salin URL Web App (/exec) ke data/game_config.json & docs/game_config.json field "apps_script_url".
+ * Cara Deploy / Update:
+ * 1. Buka Spreadsheet -> Ekstensi (Extensions) -> Apps Script.
+ * 2. Ganti seluruh isi Code.gs dengan kode ini -> Simpan (Ctrl+S).
+ * 3. Jalankan fungsi "syncSemuaSheet" 1x dari editor Apps Script (tombol Run) untuk sinkron data yang sudah ada.
+ * 4. Deploy -> Manage deployments -> klik ikon Pensil (Edit) -> Version: New version -> Deploy.
+ *    (Atau Deploy -> New deployment -> Web app -> Execute as: Me -> Who has access: Anyone, lalu salin URL /exec).
  */
 
-var CACHE_KEY_SNAPSHOT = "lb_snapshot_v1";
+var CACHE_KEY_SNAPSHOT = "lb_snapshot_v2";
 var CACHE_TTL_SECONDS = 15;
+
+/**
+ * Menu bantuan di toolbar Google Sheets agar guru bisa sinkron manual kapan saja (mis. setelah hapus baris).
+ */
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu("DOS Rescue")
+      .addItem("Sinkron HasilKeseluruhan & LeaderBoard", "syncSemuaSheet")
+      .addToUi();
+  } catch (_err) {}
+}
+
+/**
+ * Simple trigger otomatis: setiap guru mengedit atau menghapus isi sel di sheet PPLGA / PPLGB,
+ * HasilKeseluruhan & LeaderBoard langsung ikut ter-update otomatis.
+ */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) {
+      return;
+    }
+    var sheetName = e.range.getSheet().getName();
+    if (sheetName !== "PPLGA" && sheetName !== "PPLGB") {
+      return;
+    }
+    CacheService.getScriptCache().remove(CACHE_KEY_SNAPSHOT);
+    var ss = e.source || SpreadsheetApp.getActiveSpreadsheet();
+    SpreadsheetApp.flush();
+    var snap = buildLeaderboardSnapshot_(ss);
+    syncSummarySheets_(ss, snap);
+  } catch (_err) {}
+}
+
+/**
+ * Jalankan fungsi ini 1x dari Apps Script Editor (atau menu "DOS Rescue") untuk
+ * langsung menyinkronkan data PPLGA + PPLGB ke HasilKeseluruhan & LeaderBoard.
+ */
+function syncSemuaSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  CacheService.getScriptCache().remove(CACHE_KEY_SNAPSHOT);
+  SpreadsheetApp.flush();
+  var snap = buildLeaderboardSnapshot_(ss);
+  syncSummarySheets_(ss, snap);
+  return {
+    ok: true,
+    total_overall: snap.overall_list.length,
+    total_pplga: snap.pplga_list.length,
+    total_pplgb: snap.pplgb_list.length
+  };
+}
 
 function doGet(e) {
   try {
@@ -79,7 +131,14 @@ function doPost(e) {
       processSingleEvent_(ss, data);
     }
 
+    // Pastikan formula Rata-rata di PPLGA/PPLGB selesai dihitung sebelum menyinkronkan sheet rekap
+    SpreadsheetApp.flush();
     CacheService.getScriptCache().remove(CACHE_KEY_SNAPSHOT);
+    var freshSnap = buildLeaderboardSnapshot_(ss);
+    syncSummarySheets_(ss, freshSnap);
+    try {
+      CacheService.getScriptCache().put(CACHE_KEY_SNAPSHOT, JSON.stringify(freshSnap), CACHE_TTL_SECONDS);
+    } catch (_cacheErr) {}
 
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true, event: data.event || "unknown" }))
@@ -175,7 +234,7 @@ function upsertClassRow_(ss, data) {
     }
   }
 
-  // Tulis hanya kolom B..H agar formula ARRAYFORMULA di kolom A (No) dan I (Rata-rata) tetap utuh.
+  // Tulis hanya kolom B..H agar formula di kolom A (No) dan I (Rata-rata) tetap utuh.
   sheet.getRange(targetRow, 2, 1, 7).setValues([[
     nama,
     absen === "" ? "" : Number(absen),
@@ -194,9 +253,77 @@ function ensureClassSheet_(ss, sheetName) {
   }
   sheet = ss.insertSheet(sheetName);
   sheet.appendRow(["No", "Nama", "Absen", "Game 1", "Game 2", "Game 3", "Game 4", "Game 5", "Rata-rata"]);
-  sheet.getRange("A2").setFormula('=ARRAYFORMULA(IF(B2:B="";"";ROW(B2:B)-1))');
-  sheet.getRange("I2").setFormula('=ARRAYFORMULA(IF(B2:B="";"";(N(D2:D)+N(E2:E)+N(F2:F)+N(G2:G)+N(H2:H))/5))');
+  sheet.getRange("A2").setFormula('=ARRAYFORMULA(IF(B2:B="","",ROW(B2:B)-1))');
+  sheet.getRange("I2").setFormula('=ARRAYFORMULA(IF(B2:B="","",(N(D2:D)+N(E2:E)+N(F2:F)+N(G2:G)+N(H2:H))/5))');
   return sheet;
+}
+
+function ensureHasilKeseluruhanSheet_(ss) {
+  var sheet = ss.getSheetByName("HasilKeseluruhan");
+  if (!sheet) {
+    sheet = ss.insertSheet("HasilKeseluruhan");
+    sheet.appendRow(["No", "Nama", "Absen", "Kelas", "Rata-rata"]);
+  } else if (sheet.getLastRow() < 1) {
+    sheet.appendRow(["No", "Nama", "Absen", "Kelas", "Rata-rata"]);
+  }
+  return sheet;
+}
+
+function ensureLeaderBoardSheet_(ss) {
+  var sheet = ss.getSheetByName("LeaderBoard");
+  if (!sheet) {
+    sheet = ss.insertSheet("LeaderBoard");
+    sheet.appendRow(["Rank", "Nama", "Kelas", "Poin"]);
+  } else if (sheet.getLastRow() < 1) {
+    sheet.appendRow(["Rank", "Nama", "Kelas", "Poin"]);
+  }
+  return sheet;
+}
+
+/**
+ * Menyinkronkan sheet HasilKeseluruhan (gabungan PPLGA + PPLGB) dan LeaderBoard (Top 10)
+ * secara langsung dari nilai PPLGA & PPLGB tanpa bergantung pada rumus lintas-locale.
+ */
+function syncSummarySheets_(ss, snap) {
+  var dataSnap = snap || buildLeaderboardSnapshot_(ss);
+  var overall = dataSnap.overall_list || [];
+
+  // 1. Sinkron sheet HasilKeseluruhan (A: No, B: Nama, C: Absen, D: Kelas, E: Rata-rata)
+  var hasilSheet = ensureHasilKeseluruhanSheet_(ss);
+  var hasilClearRows = Math.max(hasilSheet.getLastRow() - 1, overall.length, 1);
+  if (hasilClearRows > 0) {
+    hasilSheet.getRange(2, 1, hasilClearRows, 5).clearContent();
+  }
+  if (overall.length > 0) {
+    var hasilRows = [];
+    for (var i = 0; i < overall.length; i++) {
+      var it = overall[i];
+      hasilRows.push([
+        i + 1,
+        it.nama,
+        it.absen === "" ? "" : (isNaN(Number(it.absen)) ? it.absen : Number(it.absen)),
+        it.kelas,
+        it.poin
+      ]);
+    }
+    hasilSheet.getRange(2, 1, hasilRows.length, 5).setValues(hasilRows);
+  }
+
+  // 2. Sinkron sheet LeaderBoard (A: Rank 1..10, B: Nama, C: Kelas, D: Poin)
+  var lbSheet = ensureLeaderBoardSheet_(ss);
+  var lbClearRows = Math.max(lbSheet.getLastRow() - 1, 10);
+  if (lbClearRows > 0) {
+    lbSheet.getRange(2, 2, lbClearRows, 3).clearContent();
+  }
+  var lbRows = [];
+  for (var r = 0; r < 10; r++) {
+    if (r < overall.length) {
+      lbRows.push([r + 1, overall[r].nama, overall[r].kelas, overall[r].poin]);
+    } else {
+      lbRows.push([r + 1, "", "", ""]);
+    }
+  }
+  lbSheet.getRange(2, 1, 10, 4).setValues(lbRows);
 }
 
 function appendAnswerLogsBatch_(ss, items) {
@@ -262,19 +389,24 @@ function appendAnswerLogsBatch_(ss, items) {
   }
 }
 
-function getLeaderboardSnapshot_() {
-  var cache = CacheService.getScriptCache();
-  var cached = cache.get(CACHE_KEY_SNAPSHOT);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (_e) {}
-  }
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildLeaderboardSnapshot_(ss) {
   var pplgaList = readClassRanking_(ss.getSheetByName("PPLGA"), "PPLG A");
   var pplgbList = readClassRanking_(ss.getSheetByName("PPLGB"), "PPLG B");
-  var overallList = pplgaList.concat(pplgbList);
+
+  // Clone objek agar penetapan rank keseluruhan tidak menimpa rank per-kelas di pplgaList/pplgbList!
+  var overallList = [];
+  var combined = pplgaList.concat(pplgbList);
+  for (var c = 0; c < combined.length; c++) {
+    var src = combined[c];
+    overallList.push({
+      rank: 0,
+      nama: src.nama,
+      absen: src.absen,
+      kelas: src.kelas,
+      poin: src.poin,
+      scores: src.scores.slice()
+    });
+  }
   overallList.sort(function(a, b) {
     if (b.poin !== a.poin) {
       return b.poin - a.poin;
@@ -285,12 +417,29 @@ function getLeaderboardSnapshot_() {
     overallList[i].rank = i + 1;
   }
 
-  var snap = {
+  return {
     updated_at: new Date().toISOString(),
     overall_list: overallList,
     pplga_list: pplgaList,
     pplgb_list: pplgbList
   };
+}
+
+function getLeaderboardSnapshot_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(CACHE_KEY_SNAPSHOT);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (_e) {}
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var snap = buildLeaderboardSnapshot_(ss);
+  // Ikut perbarui HasilKeseluruhan & LeaderBoard saat cache refresh (mis. setelah guru menghapus baris manual)
+  try {
+    syncSummarySheets_(ss, snap);
+  } catch (_syncErr) {}
   try {
     cache.put(CACHE_KEY_SNAPSHOT, JSON.stringify(snap), CACHE_TTL_SECONDS);
   } catch (_e2) {}
@@ -351,6 +500,7 @@ function findPersonalRank_(snap, nama, absen, kelas) {
   }
   var keyName = nama.toLowerCase();
   var keyAbsen = String(absen || "").trim();
+  var hasKelas = String(kelas || "").trim() !== "";
   var keyKelas = getClassSheetName_(kelas);
 
   var overallRank = 0;
@@ -358,7 +508,8 @@ function findPersonalRank_(snap, nama, absen, kelas) {
   var myScores = [0, 0, 0, 0, 0];
   for (var i = 0; i < snap.overall_list.length; i++) {
     var item = snap.overall_list[i];
-    if (item.nama.toLowerCase() === keyName && (!keyAbsen || item.absen === keyAbsen)) {
+    var kelasMatch = !hasKelas || (getClassSheetName_(item.kelas) === keyKelas);
+    if (item.nama.toLowerCase() === keyName && kelasMatch && (!keyAbsen || item.absen === keyAbsen)) {
       overallRank = item.rank;
       myPoin = item.poin;
       myScores = item.scores;

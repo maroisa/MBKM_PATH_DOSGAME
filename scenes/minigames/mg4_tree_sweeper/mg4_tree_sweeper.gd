@@ -47,6 +47,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	tree_v.add_child(_status_lbl)
 
 	_tree_rt = RichTextLabel.new()
+	_tree_rt.mouse_filter = Control.MOUSE_FILTER_PASS
 	_tree_rt.bbcode_enabled = true
 	_tree_rt.fit_content = true
 	_tree_rt.scroll_active = false

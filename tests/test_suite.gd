@@ -30,6 +30,7 @@ func run_all_tests() -> int:
 	_test_save_roundtrip_and_csv()
 	await _test_ui_interactions_and_states()
 	await _test_minigames_gameplay()
+	await _test_touch_scrolling()
 	await _test_responsive_layouts()
 	print("RESULTS: %d passed, %d failed" % [passed, failed])
 	return failed
@@ -244,21 +245,60 @@ func _test_ui_interactions_and_states() -> void:
 	assert_eq(int(login_inst.call("parse_valid_absen", absen_ed.text)), 15, "Absen manual '15' harus valid")
 	login_inst.call("_on_select_kelas", "PPLG B")
 	assert_eq(str(login_inst.get("_selected_kelas")), "PPLG B", "Tombol kelas PPLG B harus aktif saat dipilih")
+	for btn_node: Node in login_inst.find_children("*", "Button", true, false):
+		assert_true((btn_node as Button).text != "Ketik HP", "Tombol 'Ketik HP' harus sudah dihapus dari login_screen")
 	login_inst.queue_free()
 	await get_tree().process_frame
 
-	# 2. Leaderboard modal: uji 4 state (LOADING, NO_URL, ERROR, EMPTY, LOADED) + 3 filter
+	# 2. Leaderboard modal: uji state + aturan filter per kelas & teks rank sesuai scope
 	GameSession.start_new_session("Budi Santoso", "PPLG A", "7")
+	var sample_lb_a: Dictionary = {
+		"ok": true,
+		"total_overall": 42,
+		"total_pplga": 21,
+		"total_pplgb": 21,
+		"overall_top10": [{"rank": 1, "nama": "Andi", "kelas": "PPLG A", "poin": 98.5}],
+		"pplga_top10": [{"rank": 1, "nama": "Andi", "kelas": "PPLG A", "poin": 98.5}],
+		"pplgb_top10": [{"rank": 1, "nama": "Siti", "kelas": "PPLG B", "poin": 95.0}],
+		"my_info": {
+			"found": true,
+			"overall_rank": 5,
+			"overall_total": 42,
+			"class_rank": 2,
+			"class_total": 21,
+			"kelas": "PPLG A",
+			"rata_rata": 88.5,
+		}
+	}
 	var lb_inst := (load("res://scenes/components/leaderboard_modal.tscn") as PackedScene).instantiate() as Control
 	get_tree().root.add_child(lb_inst)
 	await get_tree().process_frame
+	var scope_btns_a: Dictionary = lb_inst.get("_scope_buttons") as Dictionary
+	assert_true(scope_btns_a.has("overall") and scope_btns_a.has("pplga"), "Siswa PPLG A harus punya tab Keseluruhan & PPLG A")
+	assert_true(not scope_btns_a.has("pplgb"), "Siswa PPLG A tidak boleh melihat tab leaderboard PPLG B")
 	for st: String in ["LOADING", "NO_URL", "ERROR", "LOADED"]:
-		lb_inst.call("_on_leaderboard_updated", st, {}, "Pesan uji " + st)
+		lb_inst.call("_on_leaderboard_updated", st, sample_lb_a, "Pesan uji " + st)
 		assert_true(not (lb_inst.get("_status_lbl") as Label).text.is_empty(), "Leaderboard state %s harus menampilkan status" % st)
-	for sc: String in ["overall", "pplga", "pplgb"]:
-		lb_inst.call("_on_scope_selected", sc)
-		assert_eq(str(lb_inst.get("_active_scope")), sc, "Filter leaderboard %s harus bekerja" % sc)
+	lb_inst.call("_on_scope_selected", "overall")
+	assert_eq(str(lb_inst.get("_active_scope")), "overall", "Filter overall harus bekerja")
+	assert_true((lb_inst.get("_personal_rank_lbl") as Label).text.contains("rank 5 dari 42"), "Tab Keseluruhan harus menampilkan overall_rank (5 dari 42)")
+	lb_inst.call("_on_scope_selected", "pplga")
+	assert_eq(str(lb_inst.get("_active_scope")), "pplga", "Filter pplga harus bekerja untuk siswa PPLG A")
+	assert_true((lb_inst.get("_personal_rank_lbl") as Label).text.contains("rank 2 dari 21"), "Tab PPLG A harus menampilkan class_rank (2 dari 21)")
+	lb_inst.call("_on_scope_selected", "pplgb")
+	assert_eq(str(lb_inst.get("_active_scope")), "pplga", "Siswa PPLG A tidak boleh berpindah ke scope pplgb")
 	lb_inst.queue_free()
+	await get_tree().process_frame
+
+	# Uji siswa PPLG B hanya mendapat tab Keseluruhan & PPLG B
+	GameSession.start_new_session("Siti Rahma", "PPLG B", "9")
+	var lb_b := (load("res://scenes/components/leaderboard_modal.tscn") as PackedScene).instantiate() as Control
+	get_tree().root.add_child(lb_b)
+	await get_tree().process_frame
+	var scope_btns_b: Dictionary = lb_b.get("_scope_buttons") as Dictionary
+	assert_true(scope_btns_b.has("overall") and scope_btns_b.has("pplgb"), "Siswa PPLG B harus punya tab Keseluruhan & PPLG B")
+	assert_true(not scope_btns_b.has("pplga"), "Siswa PPLG B tidak boleh melihat tab leaderboard PPLG A")
+	lb_b.queue_free()
 	await get_tree().process_frame
 
 	# 3. Buku Saku modal: uji perpindahan semua 6 tab
@@ -282,6 +322,8 @@ func _test_minigames_gameplay() -> void:
 	var mg1: BaseMinigame = (load("res://scenes/minigames/mg1_command_patch/mg1_command_patch.tscn") as PackedScene).instantiate() as BaseMinigame
 	get_tree().root.add_child(mg1)
 	await get_tree().process_frame
+	for btn_node: Node in mg1.find_children("*", "Button", true, false):
+		assert_true((btn_node as Button).text != "PETUNJUK", "Tombol PETUNJUK (hint) harus sudah dihapus dari minigame")
 	mg1.call("_on_choice_pressed", "mv")
 	mg1.call("_on_submit_pressed")
 	assert_eq(GameSession.attempt_logs.back()["hasil"], "SALAH", "MG1 'mv' harus ditolak")
@@ -369,6 +411,137 @@ func _test_minigames_gameplay() -> void:
 	mg5.queue_free()
 	await get_tree().process_frame
 
+	GameSession.clear_session()
+
+
+func _test_touch_scrolling() -> void:
+	GameSession.start_new_session("Uji Scroll HP", "PPLG A", "5")
+	var vp := SubViewport.new()
+	vp.size = Vector2i(390, 640)
+	get_tree().root.add_child(vp)
+
+	# 1. Uji scroll dari tengah layar di Stage 2 (di atas panel Flowchart kosong yang punya nested TouchScrollContainer)
+	var mg2 := (load("res://scenes/minigames/mg2_flowchart_builder/mg2_flowchart_builder.tscn") as PackedScene).instantiate() as BaseMinigame
+	vp.add_child(mg2)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var outer_scroll := mg2.get("_scroll") as TouchScrollContainer
+	var flow_scroll := mg2.get("_flow_scroll") as TouchScrollContainer
+	assert_true(outer_scroll != null and flow_scroll != null, "Stage 2 harus memakai TouchScrollContainer untuk outer & inner scroll")
+	assert_eq(outer_scroll.scroll_vertical, 0, "Scroll awal Stage 2 harus 0")
+
+	var mid_pt: Vector2 = flow_scroll.get_global_rect().get_center()
+	var t_down := InputEventScreenTouch.new()
+	t_down.index = 0
+	t_down.pressed = true
+	t_down.position = mid_pt
+	vp.push_input(t_down)
+
+	var t_drag := InputEventScreenDrag.new()
+	t_drag.index = 0
+	t_drag.position = mid_pt + Vector2(0.0, -140.0)
+	t_drag.relative = Vector2(0.0, -140.0)
+	vp.push_input(t_drag)
+
+	var t_up := InputEventScreenTouch.new()
+	t_up.index = 0
+	t_up.pressed = false
+	t_up.position = mid_pt + Vector2(0.0, -140.0)
+	vp.push_input(t_up)
+	await get_tree().process_frame
+
+	assert_true(outer_scroll.scroll_vertical > 50, "Swipe dari tengah layar Stage 2 harus menggeser halaman ke bawah (got %d)" % outer_scroll.scroll_vertical)
+
+	# 2. Uji swipe ke bawah (mengembalikan scroll ke atas) dari tengah layar
+	var before_up: int = outer_scroll.scroll_vertical
+	var t_down2 := InputEventScreenTouch.new()
+	t_down2.index = 0
+	t_down2.pressed = true
+	t_down2.position = mid_pt
+	vp.push_input(t_down2)
+
+	var t_drag2 := InputEventScreenDrag.new()
+	t_drag2.index = 0
+	t_drag2.position = mid_pt + Vector2(0.0, 140.0)
+	t_drag2.relative = Vector2(0.0, 140.0)
+	vp.push_input(t_drag2)
+
+	var t_up2 := InputEventScreenTouch.new()
+	t_up2.index = 0
+	t_up2.pressed = false
+	t_up2.position = mid_pt + Vector2(0.0, 140.0)
+	vp.push_input(t_up2)
+	await get_tree().process_frame
+
+	assert_true(outer_scroll.scroll_vertical < before_up, "Swipe turun dari tengah layar Stage 2 harus menggeser kembali ke atas")
+
+	mg2.queue_free()
+	await get_tree().process_frame
+
+	# 3. Uji scroll dari tengah layar di Main Hub (di atas kartu stage PanelContainer)
+	var hub := (load("res://scenes/ui/main_hub.tscn") as PackedScene).instantiate() as Control
+	vp.add_child(hub)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var hub_scroll: TouchScrollContainer = null
+	for n: Node in hub.find_children("*", "TouchScrollContainer", true, false):
+		hub_scroll = n as TouchScrollContainer
+		break
+	assert_true(hub_scroll != null, "Main Hub harus memakai TouchScrollContainer")
+	if hub_scroll != null:
+		var hub_mid: Vector2 = hub_scroll.get_global_rect().get_center()
+		var h_down := InputEventScreenTouch.new()
+		h_down.index = 0
+		h_down.pressed = true
+		h_down.position = hub_mid
+		vp.push_input(h_down)
+
+		var h_drag := InputEventScreenDrag.new()
+		h_drag.index = 0
+		h_drag.position = hub_mid + Vector2(0.0, -160.0)
+		h_drag.relative = Vector2(0.0, -160.0)
+		vp.push_input(h_drag)
+
+		var h_up := InputEventScreenTouch.new()
+		h_up.index = 0
+		h_up.pressed = false
+		h_up.position = hub_mid + Vector2(0.0, -160.0)
+		vp.push_input(h_up)
+		await get_tree().process_frame
+		assert_true(hub_scroll.scroll_vertical > 50, "Swipe dari tengah layar Main Hub harus menggeser daftar stage (got %d)" % hub_scroll.scroll_vertical)
+
+	hub.queue_free()
+	await get_tree().process_frame
+
+	# 4. Uji form login naik otomatis saat keyboard HP muncul (tidak tertutup keyboard)
+	vp.size = Vector2i(390, 740)
+	var login_kb := (load("res://scenes/ui/login_screen.tscn") as PackedScene).instantiate() as Control
+	vp.add_child(login_kb)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var absen_ctrl := login_kb.get("_absen_input") as LineEdit
+	var login_scroll := login_kb.get("_scroll") as TouchScrollContainer
+	var kb_spacer := login_kb.get("_kb_spacer") as Control
+	assert_true(absen_ctrl != null and login_scroll != null and kb_spacer != null, "Login screen harus punya _absen_input, _scroll, dan _kb_spacer")
+	if absen_ctrl != null and login_scroll != null and kb_spacer != null:
+		absen_ctrl.grab_focus()
+		login_kb.call("_mark_user_editing", absen_ctrl)
+		await get_tree().process_frame
+		var simulated_kb_h: float = 340.0
+		login_kb.call("apply_keyboard_avoidance", simulated_kb_h)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		assert_true(kb_spacer.custom_minimum_size.y >= simulated_kb_h, "Spacer keyboard harus membesar minimal setinggi keyboard HP")
+		assert_true(absen_ctrl.get_global_rect().end.y <= float(vp.size.y) - simulated_kb_h + 2.0, "Input Nomor Absen harus naik di atas area keyboard HP (end_y=%.1f, limit=%.1f)" % [absen_ctrl.get_global_rect().end.y, float(vp.size.y) - simulated_kb_h])
+		login_kb.call("apply_keyboard_avoidance", 0.0)
+		await get_tree().process_frame
+		assert_eq(kb_spacer.custom_minimum_size.y, 0.0, "Spacer keyboard harus kembali 0 saat keyboard ditutup")
+
+	vp.queue_free()
+	await get_tree().process_frame
 	GameSession.clear_session()
 
 
