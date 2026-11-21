@@ -5,7 +5,7 @@ signal config_reloaded
 
 const CONFIG_PATH := "res://data/game_config.json"
 
-var apps_script_url: String = ""
+var apps_script_url: String = "https://script.google.com/macros/s/AKfycbzGoyX345f2PkP1iZT8wd3tlfvdbwZJl3SWVQpmODgiv6kcZzyW4lbMncguhvktEwc0-w/exec"
 var spreadsheet_url: String = "https://docs.google.com/spreadsheets/d/1_5KTFCkMfApJd6mqU1qBDhrvOMRTULbgtgTqdFUC5lo/edit?usp=sharing"
 var spreadsheet_id: String = "1_5KTFCkMfApJd6mqU1qBDhrvOMRTULbgtgTqdFUC5lo"
 var school_label: String = "Laboratorium RPL / PPLG • Materi Pengoperasian Teks (DOS & CMD)"
