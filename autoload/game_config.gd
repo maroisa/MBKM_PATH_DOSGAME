@@ -36,7 +36,9 @@ func apply_config_json(raw: String) -> bool:
 	if not (data is Dictionary):
 		return false
 	var dict := data as Dictionary
-	apps_script_url = str(dict.get("apps_script_url", apps_script_url)).strip_edges()
+	var new_url: String = str(dict.get("apps_script_url", "")).strip_edges()
+	if not new_url.is_empty():
+		apps_script_url = new_url
 	spreadsheet_url = str(dict.get("spreadsheet_url", spreadsheet_url)).strip_edges()
 	spreadsheet_id = str(dict.get("spreadsheet_id", spreadsheet_id)).strip_edges()
 	school_label = str(dict.get("school_label", school_label))

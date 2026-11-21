@@ -104,7 +104,7 @@ func _build_shell() -> void:
 	_mission_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_mission_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_mission_label.add_theme_font_size_override("font_size", 16)
-	_mission_label.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	_mission_label.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
 	m_top.add_child(_mission_label)
 
 	_hint_btn = Button.new()
@@ -173,7 +173,7 @@ func _build_shell() -> void:
 
 	# Overlay Penyelesaian Stage (1 fokus dengan bintang & chime)
 	_completion_backdrop = ColorRect.new()
-	_completion_backdrop.color = Color(0.05, 0.04, 0.09, 0.85)
+	_completion_backdrop.color = Color(0.06, 0.09, 0.11, 0.88)
 	_completion_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_completion_backdrop.visible = false
 	add_child(_completion_backdrop)
@@ -322,7 +322,7 @@ func _advance_level() -> void:
 
 func _show_completion_summary() -> void:
 	GameSession.mark_minigame_finished(minigame_id)
-	TelemetryService.send_session_finish()
+	TelemetryService.sync_session_now(true)
 	AudioManager.play_stage_clear()
 
 	for ch: Node in _completion_overlay.get_children():
@@ -335,7 +335,7 @@ func _show_completion_summary() -> void:
 	var h := Label.new()
 	h.text = "STAGE %d SELESAI!" % _stage_number()
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UiTheme.style_pixel_heading(h, 24, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(h, 24, UiTheme.COL_INK_ACCENT)
 	box.add_child(h)
 
 	var score_val: int = int(GameSession.mg_scores.get(minigame_id, 0))
@@ -349,8 +349,16 @@ func _show_completion_summary() -> void:
 	info.text = "Skor Stage %d: %d / 100\nProgres tersimpan otomatis." % [_stage_number(), score_val]
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	info.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	info.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
 	box.add_child(info)
+
+	var sync_lbl := Label.new()
+	sync_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sync_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sync_lbl.add_theme_font_size_override("font_size", 13)
+	sync_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
+	sync_lbl.text = TelemetryService.get_status_label()
+	box.add_child(sync_lbl)
 
 	var btn_hub := Button.new()
 	btn_hub.text = "PILIH STAGE LAIN"

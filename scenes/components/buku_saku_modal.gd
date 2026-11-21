@@ -26,7 +26,7 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.05, 0.04, 0.09, 0.86)
+	backdrop.color = Color(0.06, 0.09, 0.11, 0.88)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
 
@@ -58,7 +58,7 @@ func _build_ui() -> void:
 	h_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	h_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(h_title, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(h_title, 16, UiTheme.COL_INK_ACCENT)
 	header.add_child(h_title)
 
 	_close_btn = Button.new()
@@ -106,13 +106,13 @@ func _build_ui() -> void:
 	_title_lbl = Label.new()
 	_title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title_lbl.add_theme_font_size_override("font_size", 18)
-	_title_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	_title_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
 	body_vbox.add_child(_title_lbl)
 
 	_summary_lbl = Label.new()
 	_summary_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary_lbl.add_theme_font_size_override("font_size", 15)
-	_summary_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	_summary_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	body_vbox.add_child(_summary_lbl)
 
 	_blocks_vbox = VBoxContainer.new()

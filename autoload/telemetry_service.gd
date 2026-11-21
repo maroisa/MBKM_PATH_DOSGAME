@@ -1,15 +1,21 @@
 extends Node
-## Layanan auto-sinkronisasi hasil siswa ke Google Sheets, fetch Leaderboard Top 10, & ekspor CSV.
+## Layanan auto-sinkronisasi hasil siswa ke Google Sheets (single-flight BATCH_SYNC, anti tumpang tindih), Leaderboard, & ekspor CSV.
 
 signal sync_status_changed(status_code: String, message: String)
 signal leaderboard_updated(status: String, data: Dictionary, message: String)
 
 enum SyncState { NO_URL, INVALID_URL, IDLE, SENDING, SYNCED, OFFLINE_QUEUED }
 
+const SUMMARY_EVENTS: Array[String] = ["SESSION_START", "SESSION_FINISH", "SESSION_SYNC"]
+const MAX_BATCH_SIZE := 25
+
 var current_state: SyncState = SyncState.IDLE
 var last_message: String = ""
 var cached_leaderboard: Dictionary = {}
 var _is_sending: bool = false
+var _in_flight_count: int = 0
+var _is_fetching_lb: bool = false
+var _lb_pending_refresh: bool = false
 var _active_request: HTTPRequest = null
 var _lb_request: HTTPRequest = null
 var _cfg_request: HTTPRequest = null
@@ -22,8 +28,10 @@ func _ready() -> void:
 	_refresh_initial_state()
 	if OS.has_feature("web"):
 		_fetch_web_runtime_config()
-	elif GameConfig.has_valid_apps_script_url() and not GameSession.pending_telemetry.is_empty():
-		flush_pending_queue()
+	elif GameConfig.has_valid_apps_script_url():
+		enqueue_unsent_attempt_logs()
+		if not GameSession.pending_telemetry.is_empty():
+			flush_pending_queue()
 
 
 func _setup_auto_retry_timer() -> void:
@@ -43,7 +51,7 @@ func _on_auto_retry_timeout() -> void:
 func _fetch_web_runtime_config() -> void:
 	# Memungkinkan guru mengganti apps_script_url di docs/game_config.json tanpa perlu export ulang Godot!
 	if _cfg_request != null and is_instance_valid(_cfg_request):
-		_cfg_request.queue_free()
+		return
 	_cfg_request = HTTPRequest.new()
 	_cfg_request.timeout = 6.0
 	add_child(_cfg_request)
@@ -51,6 +59,9 @@ func _fetch_web_runtime_config() -> void:
 	var base_url: Variant = JavaScriptBridge.eval("window.location.href.split('?')[0].split('#')[0].replace(/[^\\/]*$/, '') + 'game_config.json?v=' + Date.now();")
 	if base_url != null and not str(base_url).is_empty():
 		_cfg_request.request(str(base_url), PackedStringArray(), HTTPClient.METHOD_GET)
+	else:
+		_cfg_request.queue_free()
+		_cfg_request = null
 
 
 func _on_web_config_loaded(
@@ -65,7 +76,12 @@ func _on_web_config_loaded(
 	if result == HTTPRequest.RESULT_SUCCESS and response_code >= 200 and response_code < 300:
 		var text: String = body.get_string_from_utf8()
 		if not text.is_empty():
+			var prev_url: String = GameConfig.apps_script_url
 			GameConfig.apply_config_json(text)
+			if prev_url == GameConfig.apps_script_url and GameConfig.has_valid_apps_script_url():
+				enqueue_unsent_attempt_logs()
+				if not _is_sending and not GameSession.pending_telemetry.is_empty():
+					flush_pending_queue()
 
 
 func _on_config_reloaded() -> void:
@@ -74,27 +90,40 @@ func _on_config_reloaded() -> void:
 		enqueue_unsent_attempt_logs()
 		if GameSession.has_active_session():
 			var summary_payload: Dictionary = GameSession.build_session_summary_payload("SESSION_SYNC")
-			GameSession.pending_telemetry.append(summary_payload)
+			_enqueue_payload(summary_payload)
 			GameSession.save_to_disk()
 		if not GameSession.pending_telemetry.is_empty():
 			flush_pending_queue()
-		fetch_leaderboard()
+		else:
+			fetch_leaderboard()
+
+
+func _emit_status(new_state: SyncState, new_msg: String) -> void:
+	var changed: bool = (current_state != new_state) or (last_message != new_msg)
+	current_state = new_state
+	last_message = new_msg
+	if changed:
+		sync_status_changed.emit(_state_name(), last_message)
 
 
 func _refresh_initial_state() -> void:
 	if GameConfig.is_spreadsheet_edit_url():
-		current_state = SyncState.INVALID_URL
-		last_message = "URL di game_config.json masih link Spreadsheet (docs.google.com). Ganti dengan URL Web App Apps Script (https://script.google.com/macros/s/.../exec)."
+		_emit_status(
+			SyncState.INVALID_URL,
+			"URL di game_config.json masih link Spreadsheet (docs.google.com). Ganti dengan URL Web App Apps Script (https://script.google.com/macros/s/.../exec)."
+		)
 	elif not GameConfig.has_valid_apps_script_url():
-		current_state = SyncState.NO_URL
-		last_message = "Mode Lokal: isi URL Web App Apps Script (script.google.com/.../exec) di game_config.json agar auto-kirim ke Sheets aktif."
+		_emit_status(
+			SyncState.NO_URL,
+			"Mode Lokal: isi URL Web App Apps Script (script.google.com/.../exec) di game_config.json agar auto-kirim ke Sheets aktif."
+		)
 	elif not GameSession.pending_telemetry.is_empty():
-		current_state = SyncState.OFFLINE_QUEUED
-		last_message = "Auto-sync: %d data menunggu dikirim ke Google Sheets." % GameSession.pending_telemetry.size()
+		_emit_status(
+			SyncState.OFFLINE_QUEUED,
+			"Auto-sync: %d data menunggu dikirim ke Google Sheets." % GameSession.pending_telemetry.size()
+		)
 	else:
-		current_state = SyncState.IDLE
-		last_message = "Auto-sync aktif ke Google Sheets (Data Game DOS)."
-	sync_status_changed.emit(_state_name(), last_message)
+		_emit_status(SyncState.IDLE, "Auto-sync aktif ke Google Sheets (Data Game DOS).")
 
 
 func get_status_label() -> String:
@@ -131,6 +160,24 @@ func send_session_finish() -> void:
 	enqueue_and_send(payload)
 
 
+func sync_session_now(include_finish: bool = true) -> void:
+	if not GameConfig.has_valid_apps_script_url():
+		_refresh_initial_state()
+		fetch_leaderboard()
+		return
+	if GameSession.has_active_session():
+		enqueue_unsent_attempt_logs()
+		var ev_name: String = "SESSION_FINISH" if include_finish else "SESSION_SYNC"
+		var summary_payload: Dictionary = GameSession.build_session_summary_payload(ev_name)
+		_enqueue_payload(summary_payload)
+		GameSession.save_to_disk()
+	if not GameSession.pending_telemetry.is_empty():
+		_lb_pending_refresh = true
+		flush_pending_queue()
+	else:
+		fetch_leaderboard()
+
+
 func _build_level_log_payload(entry: Dictionary) -> Dictionary:
 	var payload: Dictionary = entry.duplicate(true)
 	payload["event"] = "LEVEL_LOG"
@@ -150,16 +197,56 @@ func enqueue_unsent_attempt_logs() -> void:
 	if GameSession.synced_log_count >= total:
 		return
 	for i: int in range(GameSession.synced_log_count, total):
-		GameSession.pending_telemetry.append(_build_level_log_payload(GameSession.attempt_logs[i]))
+		_enqueue_payload(_build_level_log_payload(GameSession.attempt_logs[i]))
 	GameSession.synced_log_count = total
 	GameSession.save_to_disk()
+
+
+func _enqueue_payload(payload: Dictionary) -> void:
+	var ev: String = str(payload.get("event", ""))
+	var min_idx: int = _in_flight_count if _is_sending else 0
+	var queue: Array[Dictionary] = GameSession.pending_telemetry
+
+	# Gabungkan (coalesce) event ringkasan kelas yg belum terbang agar tidak menumpuk di antrean
+	if ev in SUMMARY_EVENTS:
+		var sid: String = str(payload.get("session_id", ""))
+		for i: int in range(min_idx, queue.size()):
+			var existing: Dictionary = queue[i]
+			var ex_ev: String = str(existing.get("event", ""))
+			if ex_ev in SUMMARY_EVENTS and str(existing.get("session_id", "")) == sid:
+				var merged: Dictionary = payload.duplicate(true)
+				if ex_ev == "SESSION_FINISH" and ev != "SESSION_FINISH":
+					merged["event"] = "SESSION_FINISH"
+				queue[i] = merged
+				return
+
+	# Cegah duplikasi LEVEL_LOG identik sebelum terkirim
+	if ev == "LEVEL_LOG":
+		var log_key: String = "%s|%s|%s" % [
+			str(payload.get("session_id", "")),
+			str(payload.get("level_id", "")),
+			str(payload.get("percobaan_ke", 1)),
+		]
+		for i: int in range(min_idx, queue.size()):
+			var ex_log: Dictionary = queue[i]
+			if str(ex_log.get("event", "")) == "LEVEL_LOG":
+				var ex_key: String = "%s|%s|%s" % [
+					str(ex_log.get("session_id", "")),
+					str(ex_log.get("level_id", "")),
+					str(ex_log.get("percobaan_ke", 1)),
+				]
+				if ex_key == log_key:
+					queue[i] = payload.duplicate(true)
+					return
+
+	queue.append(payload.duplicate(true))
 
 
 func enqueue_and_send(payload: Dictionary) -> void:
 	if not GameConfig.has_valid_apps_script_url():
 		_refresh_initial_state()
 		return
-	GameSession.pending_telemetry.append(payload)
+	_enqueue_payload(payload)
 	GameSession.save_to_disk()
 	flush_pending_queue()
 
@@ -176,19 +263,30 @@ func flush_pending_queue() -> void:
 func _send_next_in_queue() -> void:
 	if GameSession.pending_telemetry.is_empty():
 		_is_sending = false
-		current_state = SyncState.SYNCED
-		last_message = "Otomatis tersimpan ke Google Sheets (PPLGA/PPLGB & LogJawaban)."
-		sync_status_changed.emit(_state_name(), last_message)
+		_in_flight_count = 0
+		_emit_status(SyncState.SYNCED, "Otomatis tersimpan ke Google Sheets (PPLGA/PPLGB & LogJawaban).")
+		_lb_pending_refresh = false
 		fetch_leaderboard()
 		return
 
 	_is_sending = true
-	current_state = SyncState.SENDING
-	last_message = "Auto-mengirim %d antrean data ke Sheets..." % GameSession.pending_telemetry.size()
-	sync_status_changed.emit(_state_name(), last_message)
+	var batch_count: int = mini(MAX_BATCH_SIZE, GameSession.pending_telemetry.size())
+	_in_flight_count = batch_count
+	_emit_status(SyncState.SENDING, "Auto-mengirim %d data ke Sheets..." % GameSession.pending_telemetry.size())
 
-	var next_payload: Dictionary = GameSession.pending_telemetry[0]
-	var body: String = JSON.stringify(next_payload)
+	var payload_to_send: Dictionary
+	if batch_count == 1:
+		payload_to_send = GameSession.pending_telemetry[0]
+	else:
+		var items_arr: Array[Dictionary] = []
+		for i: int in range(batch_count):
+			items_arr.append(GameSession.pending_telemetry[i])
+		payload_to_send = {
+			"event": "BATCH_SYNC",
+			"items": items_arr,
+		}
+
+	var body: String = JSON.stringify(payload_to_send)
 	var headers := PackedStringArray(["Content-Type: text/plain;charset=utf-8"])
 
 	if _active_request != null and is_instance_valid(_active_request):
@@ -221,26 +319,31 @@ func _on_request_completed(
 			if json.parse(text) == OK and json.data is Dictionary:
 				ok = bool((json.data as Dictionary).get("ok", true))
 		if ok:
-			if not GameSession.pending_telemetry.is_empty():
-				GameSession.pending_telemetry.remove_at(0)
-				GameSession.save_to_disk()
+			var remove_n: int = clampi(_in_flight_count, 1, GameSession.pending_telemetry.size())
+			for _i: int in range(remove_n):
+				if not GameSession.pending_telemetry.is_empty():
+					GameSession.pending_telemetry.remove_at(0)
+			_in_flight_count = 0
+			GameSession.save_to_disk()
 			_send_next_in_queue()
 			return
 
-	_handle_send_failure("Gagal kirim (HTTP %d, hasil %d). Akan dicoba ulang otomatis." % [response_code, result])
+	_handle_send_failure("Koneksi tertunda (HTTP %d). Data aman & akan dicoba ulang otomatis." % response_code)
 
 
 func _handle_send_failure(reason: String) -> void:
 	_is_sending = false
+	_in_flight_count = 0
 	if _active_request != null and is_instance_valid(_active_request):
 		_active_request.queue_free()
 		_active_request = null
-	current_state = SyncState.OFFLINE_QUEUED
-	last_message = reason
-	sync_status_changed.emit(_state_name(), last_message)
+	_emit_status(SyncState.OFFLINE_QUEUED, reason)
+	if _lb_pending_refresh:
+		_lb_pending_refresh = false
+		fetch_leaderboard()
 
 
-func fetch_leaderboard() -> void:
+func fetch_leaderboard(force: bool = false) -> void:
 	if GameConfig.is_spreadsheet_edit_url():
 		var local_bad: Dictionary = build_local_leaderboard_fallback()
 		cached_leaderboard = local_bad
@@ -256,6 +359,16 @@ func fetch_leaderboard() -> void:
 		leaderboard_updated.emit("NO_URL", local_data, "URL Web App Apps Script belum dipasang di game_config.json. Hanya menampilkan data lokal sesi Anda.")
 		return
 
+	# Cegah race condition: tunggu upload aktif selesai dulu agar leaderboard yang ditarik selalu terbaru
+	if _is_sending:
+		_lb_pending_refresh = true
+		return
+	if _is_fetching_lb:
+		if force:
+			_lb_pending_refresh = true
+		return
+
+	_is_fetching_lb = true
 	leaderboard_updated.emit("LOADING", cached_leaderboard, "Mengambil papan peringkat terbaru dari Google Sheets...")
 	var sep: String = "&" if GameConfig.apps_script_url.contains("?") else "?"
 	var url: String = "%s%saction=leaderboard&nama=%s&kelas=%s&absen=%s" % [
@@ -275,6 +388,7 @@ func fetch_leaderboard() -> void:
 
 	var err: Error = _lb_request.request(url, PackedStringArray(), HTTPClient.METHOD_GET)
 	if err != OK:
+		_is_fetching_lb = false
 		leaderboard_updated.emit("ERROR", cached_leaderboard, "Gagal menghubungi server Leaderboard (kode %d)." % err)
 
 
@@ -284,22 +398,25 @@ func _on_leaderboard_completed(
 	_headers: PackedStringArray,
 	body: PackedByteArray
 ) -> void:
+	_is_fetching_lb = false
 	if _lb_request != null and is_instance_valid(_lb_request):
 		_lb_request.queue_free()
 		_lb_request = null
 
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 400:
 		leaderboard_updated.emit("ERROR", cached_leaderboard, "Gagal memuat Leaderboard (HTTP %d). Periksa koneksi internet." % response_code)
-		return
+	else:
+		var text: String = body.get_string_from_utf8()
+		var parsed: Dictionary = parse_leaderboard_json(text)
+		if parsed.is_empty():
+			leaderboard_updated.emit("ERROR", cached_leaderboard, "Format balasan Leaderboard tidak valid. Pastikan URL mengarah ke Apps Script Web App (/exec).")
+		else:
+			cached_leaderboard = parsed
+			leaderboard_updated.emit("LOADED", parsed, "Diperbarui otomatis dari Google Sheets.")
 
-	var text: String = body.get_string_from_utf8()
-	var parsed: Dictionary = parse_leaderboard_json(text)
-	if parsed.is_empty():
-		leaderboard_updated.emit("ERROR", cached_leaderboard, "Format balasan Leaderboard tidak valid. Pastikan URL mengarah ke Apps Script Web App (/exec).")
-		return
-
-	cached_leaderboard = parsed
-	leaderboard_updated.emit("LOADED", parsed, "Diperbarui otomatis dari Google Sheets.")
+	if _lb_pending_refresh:
+		_lb_pending_refresh = false
+		fetch_leaderboard()
 
 
 static func parse_leaderboard_json(raw_json: String) -> Dictionary:

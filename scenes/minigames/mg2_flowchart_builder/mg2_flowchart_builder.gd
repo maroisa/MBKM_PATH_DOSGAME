@@ -3,10 +3,13 @@ extends BaseMinigame
 
 var _split_box: BoxContainer
 var _flow_title_lbl: Label
+var _flow_scroll: ScrollContainer
 var _sim_log_lbl: Label
+var _sim_scroll: ScrollContainer
 var _seq_vbox: VBoxContainer
 var _bank_flow: FlowContainer
 var _crt_card: PanelContainer
+var _flow_card: PanelContainer
 
 var _current_level: Dictionary = {}
 var _all_blocks: Array[String] = []
@@ -23,17 +26,18 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_split_box.add_theme_constant_override("separation", 12)
 	parent.add_child(_split_box)
 
-	# Panel Flowchart (urutan langkah)
-	var flow_card := PanelContainer.new()
-	flow_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	flow_card.custom_minimum_size = Vector2(0.0, 176.0)
-	UiTheme.style_rpg_panel(flow_card, 14.0)
-	_split_box.add_child(flow_card)
+	# Panel Flowchart (tinggi terkunci dengan ScrollContainer internal agar tidak turun-turun saat tambah blok)
+	_flow_card = PanelContainer.new()
+	_flow_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_flow_card.custom_minimum_size = Vector2(0.0, 260.0)
+	UiTheme.style_rpg_panel(_flow_card, 14.0)
+	_split_box.add_child(_flow_card)
 
 	var flow_v := VBoxContainer.new()
 	flow_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow_v.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	flow_v.add_theme_constant_override("separation", 6)
-	flow_card.add_child(flow_v)
+	_flow_card.add_child(flow_v)
 
 	_flow_title_lbl = Label.new()
 	_flow_title_lbl.text = "URUTAN FLOWCHART"
@@ -41,20 +45,33 @@ func _setup_content(parent: VBoxContainer) -> void:
 	UiTheme.style_pixel_heading(_flow_title_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
 	flow_v.add_child(_flow_title_lbl)
 
+	_flow_scroll = ScrollContainer.new()
+	_flow_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_flow_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_flow_scroll.custom_minimum_size = Vector2(0.0, 200.0)
+	_flow_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	flow_v.add_child(_flow_scroll)
+
+	var flow_pad := MarginContainer.new()
+	flow_pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow_pad.add_theme_constant_override("margin_right", 6)
+	_flow_scroll.add_child(flow_pad)
+
 	_seq_vbox = VBoxContainer.new()
 	_seq_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_seq_vbox.add_theme_constant_override("separation", 4)
-	flow_v.add_child(_seq_vbox)
+	flow_pad.add_child(_seq_vbox)
 
 	# Panel Simulasi Monitor DOS
 	_crt_card = PanelContainer.new()
 	_crt_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_crt_card.custom_minimum_size = Vector2(0.0, 176.0)
+	_crt_card.custom_minimum_size = Vector2(0.0, 260.0)
 	UiTheme.style_monitor_panel(_crt_card, 14.0)
 	_split_box.add_child(_crt_card)
 
 	var crt_v := VBoxContainer.new()
 	crt_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	crt_v.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	crt_v.add_theme_constant_override("separation", 8)
 	_crt_card.add_child(crt_v)
 
@@ -63,12 +80,20 @@ func _setup_content(parent: VBoxContainer) -> void:
 	UiTheme.style_pixel_heading(crt_title, 16, UiTheme.COL_INFO)
 	crt_v.add_child(crt_title)
 
+	_sim_scroll = ScrollContainer.new()
+	_sim_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sim_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sim_scroll.custom_minimum_size = Vector2(0.0, 200.0)
+	_sim_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	crt_v.add_child(_sim_scroll)
+
 	_sim_log_lbl = Label.new()
+	_sim_log_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sim_log_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sim_log_lbl.add_theme_font_override("font", UiTheme.make_mono_font())
 	_sim_log_lbl.add_theme_font_size_override("font_size", 15)
 	_sim_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
-	crt_v.add_child(_sim_log_lbl)
+	_sim_scroll.add_child(_sim_log_lbl)
 
 	# Bank Blok
 	var bank_card := PanelContainer.new()
@@ -84,7 +109,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	var bank_title := Label.new()
 	bank_title.text = "BANK BLOK PERINTAH (TAP UNTUK MEMASANG)"
 	bank_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(bank_title, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(bank_title, 16, UiTheme.COL_INK_ACCENT)
 	bank_v.add_child(bank_title)
 
 	_bank_flow = FlowContainer.new()
@@ -95,8 +120,17 @@ func _setup_content(parent: VBoxContainer) -> void:
 
 
 func _on_layout_mode_changed(mode: AdaptiveLayout.LayoutMode) -> void:
+	var is_comp: bool = (mode == AdaptiveLayout.LayoutMode.COMPACT_PORTRAIT)
 	if _split_box != null:
-		_split_box.vertical = (mode == AdaptiveLayout.LayoutMode.COMPACT_PORTRAIT)
+		_split_box.vertical = is_comp
+	if _flow_card != null and _flow_scroll != null:
+		var fh: float = 210.0 if is_comp else 260.0
+		_flow_card.custom_minimum_size = Vector2(0.0, fh)
+		_flow_scroll.custom_minimum_size = Vector2(0.0, fh - 58.0)
+	if _crt_card != null and _sim_scroll != null:
+		var ch: float = 160.0 if is_comp else 260.0
+		_crt_card.custom_minimum_size = Vector2(0.0, ch)
+		_sim_scroll.custom_minimum_size = Vector2(0.0, ch - 58.0)
 
 
 func _load_level(level: Dictionary) -> void:
@@ -129,7 +163,7 @@ func _rebuild_ui_lists() -> void:
 		var empty_lbl := Label.new()
 		empty_lbl.text = "Belum ada langkah dipasang. Tap blok perintah di bawah (target %d langkah)." % needed_count
 		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		empty_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+		empty_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 		_seq_vbox.add_child(empty_lbl)
 	else:
 		for i: int in range(_sequence.size()):
@@ -139,7 +173,7 @@ func _rebuild_ui_lists() -> void:
 				arrow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				arrow_lbl.add_theme_font_override("font", mono)
 				arrow_lbl.add_theme_font_size_override("font_size", 14)
-				arrow_lbl.add_theme_color_override("font_color", UiTheme.COL_GOLD_BRIGHT)
+				arrow_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_ACCENT)
 				_seq_vbox.add_child(arrow_lbl)
 
 			var step_text: String = _sequence[i]
@@ -204,6 +238,14 @@ func _add_step(step_text: String) -> void:
 	AudioManager.play_click()
 	_sequence.append(step_text)
 	_rebuild_ui_lists()
+	call_deferred("_scroll_flow_to_bottom")
+
+
+func _scroll_flow_to_bottom() -> void:
+	if is_instance_valid(_flow_scroll):
+		var vbar: VScrollBar = _flow_scroll.get_v_scroll_bar()
+		if vbar != null:
+			_flow_scroll.scroll_vertical = int(vbar.max_value)
 
 
 func _remove_step(idx: int) -> void:

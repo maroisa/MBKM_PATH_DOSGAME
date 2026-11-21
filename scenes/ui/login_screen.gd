@@ -1,5 +1,5 @@
 extends Control
-## Layar 1: Title & Login Retro Pixel Art 128-bit (1 fokus utama + 2 tombol cepat di bawah).
+## Layar 1: Title & Login Retro Pixel Art Modern Stardew Valley (manual numeric Absen + 1 fokus utama + 2 tombol cepat).
 
 var _margin: MarginContainer
 var _center_pad: MarginContainer
@@ -8,8 +8,7 @@ var _resume_btn: Button
 var _nama_input: LineEdit
 var _selected_kelas: String = "PPLG A"
 var _kelas_buttons: Dictionary[String, Button] = {}
-var _absen_value: int = 1
-var _absen_lbl: Label
+var _absen_input: LineEdit
 var _error_panel: PanelContainer
 var _error_lbl: Label
 var _start_btn: Button
@@ -55,7 +54,7 @@ func _build_ui() -> void:
 	col.add_theme_constant_override("separation", 12)
 	_center_pad.add_child(col)
 
-	# Judul Game Pixel Art 128-bit
+	# Judul Game Retro Pixel Art
 	var title_box := VBoxContainer.new()
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_box.add_theme_constant_override("separation", 6)
@@ -72,7 +71,7 @@ func _build_ui() -> void:
 	title_lbl.text = "DOS RESCUE"
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	UiTheme.style_pixel_heading(title_lbl, 32, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_pixel_heading(title_lbl, 32, UiTheme.COL_GOLD_BRIGHT, true)
 	title_row.add_child(title_lbl)
 
 	var sub_lbl := Label.new()
@@ -103,7 +102,7 @@ func _build_ui() -> void:
 	)
 	_resume_panel.add_child(_resume_btn)
 
-	# Kartu RPG Utama: Form Masuk Ringkas
+	# Kartu Kayu & Perkamen Utama: Form Identitas Ringkas
 	var form_card := PanelContainer.new()
 	form_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_rpg_panel(form_card, 16.0)
@@ -116,12 +115,12 @@ func _build_ui() -> void:
 
 	var form_hdr := Label.new()
 	form_hdr.text = "IDENTITAS PESERTA"
-	UiTheme.style_pixel_heading(form_hdr, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(form_hdr, 16, UiTheme.COL_INK_ACCENT)
 	form_v.add_child(form_hdr)
 
 	var nama_lbl := Label.new()
 	nama_lbl.text = "Nama Lengkap"
-	nama_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	nama_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	form_v.add_child(nama_lbl)
 
 	var nama_row := HBoxContainer.new()
@@ -134,7 +133,8 @@ func _build_ui() -> void:
 	_nama_input.custom_minimum_size = Vector2(160.0, UiTheme.MIN_TAP_HEIGHT)
 	_nama_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_nama_input.text_submitted.connect(func(_t: String) -> void:
-		_on_start_pressed()
+		if is_instance_valid(_absen_input):
+			_absen_input.grab_focus()
 	)
 	nama_row.add_child(_nama_input)
 
@@ -149,7 +149,7 @@ func _build_ui() -> void:
 	# 2 Tombol Kelas Besar: PPLG A & PPLG B saja
 	var kelas_lbl := Label.new()
 	kelas_lbl.text = "Pilih Kelas"
-	kelas_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	kelas_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	form_v.add_child(kelas_lbl)
 
 	var kelas_row := HBoxContainer.new()
@@ -169,54 +169,36 @@ func _build_ui() -> void:
 		kelas_row.add_child(k_btn)
 		_kelas_buttons[cls_name] = k_btn
 
-	# Stepper Absen Sentuh
+	# Ketik Nomor Absen Manual (1-99)
 	var absen_title := Label.new()
-	absen_title.text = "Nomor Absen"
-	absen_title.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	absen_title.text = "Nomor Absen (1-99)"
+	absen_title.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	form_v.add_child(absen_title)
 
 	var absen_row := HBoxContainer.new()
+	absen_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	absen_row.add_theme_constant_override("separation", 8)
 	form_v.add_child(absen_row)
 
-	var minus_btn := Button.new()
-	minus_btn.text = "-"
-	UiTheme.style_blue_button(minus_btn, "", true)
-	minus_btn.custom_minimum_size = Vector2(52.0, UiTheme.MIN_TAP_HEIGHT)
-	minus_btn.pressed.connect(func() -> void:
-		_set_absen(_absen_value - 1)
+	_absen_input = LineEdit.new()
+	_absen_input.placeholder_text = "Contoh: 12"
+	_absen_input.max_length = 2
+	_absen_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	_absen_input.custom_minimum_size = Vector2(130.0, UiTheme.MIN_TAP_HEIGHT)
+	_absen_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_absen_input.text_changed.connect(_on_absen_text_changed)
+	_absen_input.text_submitted.connect(func(_t: String) -> void:
+		_on_start_pressed()
 	)
-	absen_row.add_child(minus_btn)
+	absen_row.add_child(_absen_input)
 
-	var absen_box := PanelContainer.new()
-	absen_box.custom_minimum_size = Vector2(72.0, UiTheme.MIN_TAP_HEIGHT)
-	UiTheme.style_monitor_panel(absen_box, 6.0)
-	absen_row.add_child(absen_box)
-
-	_absen_lbl = Label.new()
-	_absen_lbl.text = "1"
-	_absen_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_absen_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	UiTheme.style_pixel_heading(_absen_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
-	absen_box.add_child(_absen_lbl)
-
-	var plus_btn := Button.new()
-	plus_btn.text = "+"
-	UiTheme.style_blue_button(plus_btn, "", true)
-	plus_btn.custom_minimum_size = Vector2(52.0, UiTheme.MIN_TAP_HEIGHT)
-	plus_btn.pressed.connect(func() -> void:
-		_set_absen(_absen_value + 1)
-	)
-	absen_row.add_child(plus_btn)
-
-	var plus5_btn := Button.new()
-	plus5_btn.text = "+5"
-	UiTheme.style_chip_button(plus5_btn, false)
-	plus5_btn.custom_minimum_size = Vector2(64.0, UiTheme.MIN_TAP_HEIGHT)
-	plus5_btn.pressed.connect(func() -> void:
-		_set_absen(_absen_value + 5)
-	)
-	absen_row.add_child(plus5_btn)
+	if OS.has_feature("web"):
+		var web_absen_btn := Button.new()
+		web_absen_btn.text = "Ketik HP"
+		web_absen_btn.tooltip_text = "Ketik nomor absen lewat dialog browser jika keyboard HP tidak muncul"
+		UiTheme.style_blue_button(web_absen_btn, "", false)
+		web_absen_btn.pressed.connect(_on_web_prompt_absen)
+		absen_row.add_child(web_absen_btn)
 
 	# Inline Error Validasi
 	_error_panel = PanelContainer.new()
@@ -266,7 +248,7 @@ func _build_ui() -> void:
 	)
 	quick_row.add_child(book_btn)
 
-	# Catatan sinkronisasi ringkas di paling bawah
+	# Catatan sinkronisasi ringkas di paling bawah (di atas latar gelap)
 	_status_footer_lbl = Label.new()
 	_status_footer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_footer_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -314,11 +296,31 @@ func _refresh_kelas_buttons() -> void:
 		UiTheme.style_chip_button(_kelas_buttons[k], k == _selected_kelas)
 
 
-func _set_absen(val: int) -> void:
-	AudioManager.play_click()
-	_absen_value = clampi(val, 1, 50)
-	_absen_lbl.text = str(_absen_value)
-	UiTheme.pulse_control(_absen_lbl, 0.90, 0.10)
+func _on_absen_text_changed(raw: String) -> void:
+	var cleaned := _filter_digits(raw)
+	if cleaned != raw:
+		var col_idx: int = clampi(_absen_input.caret_column - (raw.length() - cleaned.length()), 0, cleaned.length())
+		_absen_input.text = cleaned
+		_absen_input.caret_column = col_idx
+
+
+static func _filter_digits(raw: String) -> String:
+	var out: String = ""
+	for i: int in range(raw.length()):
+		var ch: String = raw.substr(i, 1)
+		if ch >= "0" and ch <= "9":
+			out += ch
+	return out
+
+
+static func parse_valid_absen(raw: String) -> int:
+	var trimmed: String = raw.strip_edges()
+	if trimmed.is_empty() or not trimmed.is_valid_int():
+		return -1
+	var num: int = int(trimmed)
+	if num < 1 or num > 99:
+		return -1
+	return num
 
 
 func _on_web_prompt_nama() -> void:
@@ -332,15 +334,35 @@ func _on_web_prompt_nama() -> void:
 			_nama_input.text = s
 
 
+func _on_web_prompt_absen() -> void:
+	if not OS.has_feature("web"):
+		return
+	var escaped: String = _absen_input.text.replace("'", "\\'")
+	var res: Variant = JavaScriptBridge.eval("window.prompt('Masukkan Nomor Absen (1-99):', '%s');" % escaped)
+	if res != null:
+		var cleaned: String = _filter_digits(str(res).strip_edges()).substr(0, 2)
+		if not cleaned.is_empty():
+			_absen_input.text = cleaned
+
+
 func _on_start_pressed() -> void:
 	AudioManager.play_click()
 	var nama_val: String = _nama_input.text.strip_edges()
 	if nama_val.length() < 2:
 		_show_error("Isi Nama Lengkap minimal 2 huruf sebelum mulai main.")
+		if is_instance_valid(_nama_input):
+			_nama_input.grab_focus()
+		return
+
+	var absen_num: int = parse_valid_absen(_absen_input.text)
+	if absen_num <= 0:
+		_show_error("Isi Nomor Absen dengan angka 1 sampai 99.")
+		if is_instance_valid(_absen_input):
+			_absen_input.grab_focus()
 		return
 
 	_error_panel.visible = false
-	GameSession.start_new_session(nama_val, _selected_kelas, str(_absen_value))
+	GameSession.start_new_session(nama_val, _selected_kelas, str(absen_num))
 	TelemetryService.send_session_start()
 	SceneRouter.go_to_hub()
 

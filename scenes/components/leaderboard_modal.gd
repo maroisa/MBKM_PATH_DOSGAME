@@ -35,7 +35,7 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.05, 0.04, 0.09, 0.86)
+	backdrop.color = Color(0.06, 0.09, 0.11, 0.88)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
 
@@ -73,7 +73,7 @@ func _build_ui() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(title, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(title, 16, UiTheme.COL_INK_ACCENT)
 	title_row.add_child(title)
 
 	var hdr_btns := HBoxContainer.new()
@@ -113,13 +113,13 @@ func _build_ui() -> void:
 
 	_personal_rank_lbl = Label.new()
 	_personal_rank_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(_personal_rank_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(_personal_rank_lbl, 16, UiTheme.COL_INK_PRIMARY)
 	pv.add_child(_personal_rank_lbl)
 
 	_personal_detail_lbl = Label.new()
 	_personal_detail_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_personal_detail_lbl.add_theme_font_size_override("font_size", 14)
-	_personal_detail_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	_personal_detail_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	pv.add_child(_personal_detail_lbl)
 
 	# 3 Tombol Filter: Keseluruhan 1-10, PPLG A, PPLG B
@@ -146,7 +146,7 @@ func _build_ui() -> void:
 	_status_lbl = Label.new()
 	_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status_lbl.add_theme_font_size_override("font_size", 14)
-	_status_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	root_v.add_child(_status_lbl)
 
 	# Daftar Top 10
@@ -257,16 +257,16 @@ func _render_top10_table() -> void:
 
 	if _lb_status == "LOADING":
 		_status_lbl.text = "[INFO] Memuat papan peringkat terbaru dari Google Sheets..."
-		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
 	elif _lb_status == "ERROR":
 		_status_lbl.text = "[ERR] " + _lb_message
-		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_ERROR)
+		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_ERROR)
 	elif _lb_status == "NO_URL":
 		_status_lbl.text = "[INFO] " + _lb_message
-		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
 	else:
 		_status_lbl.text = "Menampilkan maksimal 10 peringkat teratas berdasarkan rata-rata skor tertinggi."
-		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 
 	var key_map: Dictionary[String, String] = {
 		"overall": "overall_top10",
@@ -332,19 +332,22 @@ func _render_top10_table() -> void:
 		var rank_lbl := Label.new()
 		rank_lbl.text = "#%d" % r_rank
 		rank_lbl.custom_minimum_size = Vector2(40.0, 0.0)
-		UiTheme.style_pixel_heading(rank_lbl, 16, UiTheme.COL_GOLD_BRIGHT if r_rank <= 3 else UiTheme.COL_INFO)
+		if is_me:
+			UiTheme.style_parchment_heading(rank_lbl, 16, UiTheme.COL_INK_ACCENT)
+		else:
+			UiTheme.style_pixel_heading(rank_lbl, 16, UiTheme.COL_GOLD_BRIGHT if r_rank <= 3 else UiTheme.COL_INFO, true)
 		hb.add_child(rank_lbl)
 
 		var name_lbl := Label.new()
 		name_lbl.text = "%s (%s)%s" % [r_nama, r_kelas, " [KAMU]" if is_me else ""]
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+		name_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY if is_me else UiTheme.COL_TEXT_PRIMARY)
 		hb.add_child(name_lbl)
 
 		var score_lbl := Label.new()
 		score_lbl.text = "%.2f" % r_poin
 		score_lbl.add_theme_font_override("font", mono)
 		score_lbl.add_theme_font_size_override("font_size", 15)
-		score_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS)
+		score_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SUCCESS if is_me else UiTheme.COL_SUCCESS)
 		hb.add_child(score_lbl)

@@ -154,6 +154,20 @@ func _test_catalog_and_buku_saku() -> void:
 	TelemetryService.enqueue_unsent_attempt_logs()
 	assert_eq(GameSession.synced_log_count, 1, "enqueue_unsent_attempt_logs harus menandai attempt lokal untuk auto-kirim")
 	assert_eq(GameSession.pending_telemetry.size(), 1, "Attempt lokal harus masuk antrean pending_telemetry saat URL valid")
+
+	# Uji coalesce event summary & pencegahan duplikat antrean (anti-tumpang-tindih)
+	TelemetryService._enqueue_payload(GameSession.build_session_summary_payload("SESSION_START"))
+	TelemetryService._enqueue_payload(GameSession.build_session_summary_payload("SESSION_SYNC"))
+	TelemetryService._enqueue_payload(GameSession.build_session_summary_payload("SESSION_FINISH"))
+	var summary_cnt: int = 0
+	var last_summary_ev: String = ""
+	for q_item: Dictionary in GameSession.pending_telemetry:
+		var qev: String = str(q_item.get("event", ""))
+		if qev in TelemetryService.SUMMARY_EVENTS:
+			summary_cnt += 1
+			last_summary_ev = qev
+	assert_eq(summary_cnt, 1, "Event ringkasan sesi tidak boleh menumpuk di antrean")
+	assert_eq(last_summary_ev, "SESSION_FINISH", "SESSION_FINISH harus dipertahankan sebagai prioritas ringkasan")
 	GameSession.clear_session()
 	GameConfig.apps_script_url = old_url
 
@@ -210,17 +224,26 @@ func _test_save_roundtrip_and_csv() -> void:
 
 
 func _test_ui_interactions_and_states() -> void:
-	# 1. Login screen validation + class toggle + absen stepper
+	# 1. Login screen validation + class toggle + input absen manual
 	GameSession.clear_session()
 	var login_inst := (load("res://scenes/ui/login_screen.tscn") as PackedScene).instantiate() as Control
 	get_tree().root.add_child(login_inst)
 	await get_tree().process_frame
 	login_inst.call("_on_start_pressed")
 	assert_true((login_inst.get("_error_panel") as Control).visible, "Login nama kosong harus memunculkan panel error")
+	var nama_ed := login_inst.get("_nama_input") as LineEdit
+	var absen_ed := login_inst.get("_absen_input") as LineEdit
+	assert_true(absen_ed != null, "Input absen manual (LineEdit) harus tersedia")
+	nama_ed.text = "Budi Santoso"
+	absen_ed.text = "abc"
+	login_inst.call("_on_absen_text_changed", "abc")
+	assert_eq(absen_ed.text, "", "Input absen non-digit harus disaring kosong")
+	login_inst.call("_on_start_pressed")
+	assert_true((login_inst.get("_error_panel") as Control).visible, "Absen kosong harus memunculkan panel error")
+	absen_ed.text = "15"
+	assert_eq(int(login_inst.call("parse_valid_absen", absen_ed.text)), 15, "Absen manual '15' harus valid")
 	login_inst.call("_on_select_kelas", "PPLG B")
 	assert_eq(str(login_inst.get("_selected_kelas")), "PPLG B", "Tombol kelas PPLG B harus aktif saat dipilih")
-	login_inst.call("_set_absen", 15)
-	assert_eq(int(login_inst.get("_absen_value")), 15, "Stepper absen harus berubah ke 15")
 	login_inst.queue_free()
 	await get_tree().process_frame
 
@@ -269,16 +292,22 @@ func _test_minigames_gameplay() -> void:
 	mg1.queue_free()
 	await get_tree().process_frame
 
-	# 2. MG2 Flowchart Builder
+	# 2. MG2 Flowchart Builder (cek _flow_scroll mengunci tinggi saat banyak langkah ditambahkan)
 	var mg2: BaseMinigame = (load("res://scenes/minigames/mg2_flowchart_builder/mg2_flowchart_builder.tscn") as PackedScene).instantiate() as BaseMinigame
 	get_tree().root.add_child(mg2)
 	await get_tree().process_frame
+	var flow_card_ctrl := mg2.get("_flow_card") as Control
+	var flow_sc := mg2.get("_flow_scroll") as ScrollContainer
+	assert_true(flow_sc != null and flow_card_ctrl != null, "MG2 harus memiliki ScrollContainer internal pada panel Flowchart")
+	var initial_card_h: float = flow_card_ctrl.size.y
 	mg2.call("_add_step", "TYPE ok.txt")
 	mg2.call("_on_submit_pressed")
 	assert_eq(GameSession.attempt_logs.back()["hasil"], "SALAH", "MG2 urutan salah harus ditolak")
 	mg2.call("_on_reset_level_pressed")
 	for step: String in ["MD cc", "CD cc", "COPY CON ok.txt", "Isi \"bebas\" + [Ctrl+Z]", "TYPE ok.txt"]:
 		mg2.call("_add_step", step)
+	await get_tree().process_frame
+	assert_true(absf(flow_card_ctrl.size.y - initial_card_h) <= 4.0, "Tinggi panel Flowchart MG2 tidak boleh turun-turun saat tambah 5 langkah")
 	mg2.call("_on_submit_pressed")
 	assert_eq(GameSession.attempt_logs.back()["hasil"], "BENAR", "MG2 urutan benar harus diterima")
 	mg2.queue_free()

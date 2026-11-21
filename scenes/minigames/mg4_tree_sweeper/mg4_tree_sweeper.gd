@@ -71,7 +71,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	var act_title := Label.new()
 	act_title.text = "AKSI TERMINAL (TAP PERINTAH)"
 	act_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(act_title, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(act_title, 16, UiTheme.COL_INK_ACCENT)
 	act_v.add_child(act_title)
 
 	_actions_flow = FlowContainer.new()

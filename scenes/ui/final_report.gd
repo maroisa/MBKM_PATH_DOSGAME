@@ -1,5 +1,5 @@
 extends Control
-## Layar Rapor Akhir Retro Pixel Art 128-bit: Auto-Sync Google Sheets, Scorecard, Rekap Stage 1-5, & CSV.
+## Layar Rapor Akhir Modern Stardew Valley: Auto-Sync Google Sheets bebas tumpang tindih, Scorecard, Rekap Stage 1-5, & CSV.
 
 const STAGE_ICONS: Dictionary[String, String] = {
 	"mg1": "terminal",
@@ -27,11 +27,13 @@ var _rank_lbl: Label
 var _avg_score_lbl: Label
 var _avg_stars_slot: HBoxContainer
 var _sync_status_lbl: Label
+var _retry_sync_btn: Button
 var _action_box: PanelContainer
 var _action_msg_lbl: Label
 var _scores_box: VBoxContainer
 var _logs_box: VBoxContainer
 var _csv_btn: Button
+var _last_action_text: String = ""
 
 
 func _ready() -> void:
@@ -44,11 +46,8 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_on_resized)
 	_on_resized()
 	_populate_report()
-	# Auto-kirim hasil terbaru ke Google Sheets saat Rapor dibuka (jika URL Web App valid).
-	if GameSession.has_active_session() and GameConfig.has_valid_apps_script_url():
-		TelemetryService.send_session_finish()
-		TelemetryService.flush_pending_queue()
-	TelemetryService.fetch_leaderboard()
+	# Satu pintu auto-sync saat Rapor dibuka: hindari ganda POST/GET bersamaan
+	TelemetryService.sync_session_now(true)
 	if _csv_btn != null:
 		_csv_btn.grab_focus()
 
@@ -66,7 +65,7 @@ func _build_ui() -> void:
 	main_v.add_theme_constant_override("separation", 10)
 	_margin.add_child(main_v)
 
-	# 1 Top Bar Ringkas dengan aksen rel emas
+	# 1 Top Bar Kayu Gelap Ringkas
 	var top_panel := PanelContainer.new()
 	top_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_header_panel(top_panel, 8.0)
@@ -96,7 +95,7 @@ func _build_ui() -> void:
 	hdr_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hdr_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hdr_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	UiTheme.style_pixel_heading(hdr_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_pixel_heading(hdr_lbl, 16, UiTheme.COL_GOLD_BRIGHT, true)
 	top_row.add_child(hdr_lbl)
 
 	_new_btn = Button.new()
@@ -140,7 +139,7 @@ func _build_ui() -> void:
 	inner_v.add_theme_constant_override("separation", 12)
 	inner_pad.add_child(inner_v)
 
-	# Panel Ringkasan & Scorecard Nilai Akhir (bingkai emas)
+	# Panel Ringkasan & Scorecard Nilai Akhir (Perkamen Sorotan Emas)
 	var sum_card := PanelContainer.new()
 	UiTheme.style_gold_panel(sum_card, 16.0)
 	inner_v.add_child(sum_card)
@@ -170,22 +169,22 @@ func _build_ui() -> void:
 	_rank_lbl = Label.new()
 	_rank_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rank_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(_rank_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(_rank_lbl, 16, UiTheme.COL_INK_PRIMARY)
 	rank_row.add_child(_rank_lbl)
 
 	_summary_lbl = Label.new()
 	_summary_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary_lbl.add_theme_font_size_override("font_size", 15)
-	_summary_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	_summary_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
 	left_v.add_child(_summary_lbl)
 
 	_sync_status_lbl = Label.new()
 	_sync_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sync_status_lbl.add_theme_font_size_override("font_size", 14)
-	_sync_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+	_sync_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
 	left_v.add_child(_sync_status_lbl)
 
-	# Blok Scorecard Nilai Rata-rata di kanan/bawah
+	# Blok Scorecard Nilai Rata-rata di kanan/bawah (Monitor Gelap)
 	var score_box := PanelContainer.new()
 	score_box.custom_minimum_size = Vector2(180.0, 92.0)
 	score_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -207,7 +206,7 @@ func _build_ui() -> void:
 	_avg_score_lbl = Label.new()
 	_avg_score_lbl.text = "0.0"
 	_avg_score_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UiTheme.style_pixel_heading(_avg_score_lbl, 24, UiTheme.COL_SUCCESS)
+	UiTheme.style_pixel_heading(_avg_score_lbl, 24, UiTheme.COL_SUCCESS, true)
 	sb_v.add_child(_avg_score_lbl)
 
 	var stars_c := CenterContainer.new()
@@ -221,12 +220,12 @@ func _build_ui() -> void:
 	btn_flow.add_theme_constant_override("v_separation", 8)
 	sum_outer.add_child(btn_flow)
 
-	var retry_sync_btn := Button.new()
-	retry_sync_btn.text = "SINKRON SHEETS"
-	UiTheme.style_blue_button(retry_sync_btn, "play", true)
-	retry_sync_btn.custom_minimum_size = Vector2(168.0, 50.0)
-	retry_sync_btn.pressed.connect(_on_retry_sync)
-	btn_flow.add_child(retry_sync_btn)
+	_retry_sync_btn = Button.new()
+	_retry_sync_btn.text = "SINKRON SHEETS"
+	UiTheme.style_blue_button(_retry_sync_btn, "play", true)
+	_retry_sync_btn.custom_minimum_size = Vector2(168.0, 50.0)
+	_retry_sync_btn.pressed.connect(_on_retry_sync)
+	btn_flow.add_child(_retry_sync_btn)
 
 	_csv_btn = Button.new()
 	_csv_btn.text = "UNDUH CSV"
@@ -292,7 +291,7 @@ func _populate_report() -> void:
 		done_cnt,
 		GameSession.get_elapsed_seconds()
 	]
-	_sync_status_lbl.text = "Sinkronisasi Sheets: " + TelemetryService.get_status_label()
+	_refresh_sync_line()
 
 	_avg_score_lbl.text = "%.1f" % avg_val
 	for ch: Node in _avg_stars_slot.get_children():
@@ -303,7 +302,7 @@ func _populate_report() -> void:
 		ch.queue_free()
 	var sh := Label.new()
 	sh.text = "REKAP SKOR STAGE 1 - 5"
-	UiTheme.style_pixel_heading(sh, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(sh, 16, UiTheme.COL_INK_ACCENT)
 	_scores_box.add_child(sh)
 
 	for meta: Dictionary in LevelsCatalog.get_minigames_meta():
@@ -344,7 +343,7 @@ func _populate_report() -> void:
 		ch.queue_free()
 	var lh := Label.new()
 	lh.text = "LOG JAWABAN DETAIL"
-	UiTheme.style_pixel_heading(lh, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(lh, 16, UiTheme.COL_INK_ACCENT)
 	_logs_box.add_child(lh)
 
 	if GameSession.attempt_logs.is_empty():
@@ -398,6 +397,20 @@ func _populate_report() -> void:
 		v.add_child(body_lbl)
 
 
+func _refresh_sync_line() -> void:
+	_sync_status_lbl.text = "Sinkronisasi Sheets: " + TelemetryService.get_status_label()
+	if TelemetryService.current_state == TelemetryService.SyncState.SYNCED:
+		_sync_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SUCCESS)
+	elif TelemetryService.current_state == TelemetryService.SyncState.INVALID_URL:
+		_sync_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_ERROR)
+	else:
+		_sync_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
+	if is_instance_valid(_retry_sync_btn):
+		var sending_now: bool = (TelemetryService.current_state == TelemetryService.SyncState.SENDING)
+		_retry_sync_btn.disabled = sending_now
+		_retry_sync_btn.text = "MENGIRIM..." if sending_now else "SINKRON SHEETS"
+
+
 func _refresh_sfx_icon() -> void:
 	_sfx_btn.icon = UiTheme.get_icon_2x("sound_off" if AudioManager.muted else "sound_on", 2)
 
@@ -409,10 +422,10 @@ func _on_mute_changed(_is_muted: bool) -> void:
 
 func _on_retry_sync() -> void:
 	AudioManager.play_click()
-	TelemetryService.send_session_finish()
-	TelemetryService.flush_pending_queue()
-	var kind: String = "err" if GameConfig.is_spreadsheet_edit_url() else "info"
-	_show_action_message(TelemetryService.last_message, kind)
+	TelemetryService.sync_session_now(true)
+	if not GameConfig.has_valid_apps_script_url():
+		var kind: String = "err" if GameConfig.is_spreadsheet_edit_url() else "info"
+		_show_action_message(TelemetryService.last_message, kind)
 
 
 func _on_export_csv() -> void:
@@ -422,24 +435,29 @@ func _on_export_csv() -> void:
 
 
 func _show_action_message(msg: String, kind: String) -> void:
+	var tag: String = "[OK] " if kind == "ok" else ("[ERR] " if kind == "err" else "[INFO] ")
+	var full: String = tag + msg
+	if _action_box.visible and _last_action_text == full:
+		return
+	_last_action_text = full
 	_action_box.visible = true
 	UiTheme.style_feedback_panel(_action_box, kind)
 	var tc: Color = UiTheme.COL_SUCCESS if kind == "ok" else (UiTheme.COL_ERROR if kind == "err" else UiTheme.COL_INFO)
-	var tag: String = "[OK] " if kind == "ok" else ("[ERR] " if kind == "err" else "[INFO] ")
 	_action_msg_lbl.add_theme_color_override("font_color", tc)
-	_action_msg_lbl.text = tag + msg
+	_action_msg_lbl.text = full
 	UiTheme.pulse_control(_action_box, 0.97, 0.12)
 
 
 func _on_sync_changed(code: String, msg: String) -> void:
-	if is_inside_tree():
-		_sync_status_lbl.text = "Sinkronisasi Sheets: " + TelemetryService.get_status_label()
-		if code == "SYNCED":
-			_show_action_message(msg, "ok")
-		elif code == "INVALID_URL":
-			_show_action_message(msg, "err")
-		elif code == "OFFLINE_QUEUED":
-			_show_action_message(msg, "info")
+	if not is_inside_tree():
+		return
+	_refresh_sync_line()
+	if code == "SYNCED":
+		_show_action_message(msg, "ok")
+	elif code == "INVALID_URL":
+		_show_action_message(msg, "err")
+	elif code == "SENDING" or code == "OFFLINE_QUEUED":
+		_show_action_message(msg, "info")
 
 
 func _on_leaderboard_updated(_status: String, _data: Dictionary, _msg: String) -> void:

@@ -13,7 +13,7 @@
  * 1. Buka Spreadsheet -> Extensions -> Apps Script.
  * 2. Tempel seluruh kode ini -> Save.
  * 3. Deploy -> New deployment -> Web app -> Execute as: Me -> Who has access: Anyone.
- * 4. Salin URL Web App ke data/game_config.json field "apps_script_url".
+ * 4. Salin URL Web App (/exec) ke data/game_config.json & docs/game_config.json field "apps_script_url".
  */
 
 var CACHE_KEY_SNAPSHOT = "lb_snapshot_v1";
@@ -59,11 +59,24 @@ function doPost(e) {
     var data = JSON.parse(raw);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    if (data.event === "LEVEL_LOG") {
-      appendAnswerLog_(ss, data);
-      upsertClassRow_(ss, data);
-    } else if (data.event === "SESSION_START" || data.event === "SESSION_FINISH" || data.event === "SESSION_SYNC") {
-      upsertClassRow_(ss, data);
+    if (data.event === "BATCH_SYNC" && Array.isArray(data.items)) {
+      var latestSummary = null;
+      var logItems = [];
+      for (var i = 0; i < data.items.length; i++) {
+        var item = data.items[i] || {};
+        if (item.event === "LEVEL_LOG") {
+          logItems.push(item);
+        }
+        latestSummary = item;
+      }
+      if (logItems.length > 0) {
+        appendAnswerLogsBatch_(ss, logItems);
+      }
+      if (latestSummary) {
+        upsertClassRow_(ss, latestSummary);
+      }
+    } else {
+      processSingleEvent_(ss, data);
     }
 
     CacheService.getScriptCache().remove(CACHE_KEY_SNAPSHOT);
@@ -77,6 +90,18 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
+  }
+}
+
+function processSingleEvent_(ss, data) {
+  if (!data) {
+    return;
+  }
+  if (data.event === "LEVEL_LOG") {
+    appendAnswerLogsBatch_(ss, [data]);
+    upsertClassRow_(ss, data);
+  } else if (data.event === "SESSION_START" || data.event === "SESSION_FINISH" || data.event === "SESSION_SYNC") {
+    upsertClassRow_(ss, data);
   }
 }
 
@@ -174,7 +199,7 @@ function ensureClassSheet_(ss, sheetName) {
   return sheet;
 }
 
-function appendAnswerLog_(ss, data) {
+function appendAnswerLogsBatch_(ss, items) {
   var sheet = ss.getSheetByName("LogJawaban");
   if (!sheet) {
     sheet = ss.insertSheet("LogJawaban");
@@ -184,21 +209,57 @@ function appendAnswerLog_(ss, data) {
       "Hasil", "Percobaan_Ke", "Poin", "Durasi_Detik"
     ]);
   }
-  sheet.appendRow([
-    new Date(),
-    String(data.session_id || ""),
-    String(data.nama || ""),
-    String(data.kelas || ""),
-    String(data.absen || ""),
-    String(data.minigame_id || ""),
-    String(data.level_id || ""),
-    String(data.jawaban_siswa || ""),
-    String(data.kunci_jawaban || ""),
-    String(data.hasil || ""),
-    Number(data.percobaan_ke || 1),
-    Number(data.poin || 0),
-    Number(data.durasi_detik || 0)
-  ]);
+
+  // Cegah duplikasi log bila terjadi retry jaringan (cek 100 baris terakhir)
+  var seen = {};
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var startRow = Math.max(2, lastRow - 99);
+    var existing = sheet.getRange(startRow, 2, lastRow - startRow + 1, 10).getValues(); // B..K
+    for (var r = 0; r < existing.length; r++) {
+      var sid = String(existing[r][0] || "");
+      var lid = String(existing[r][5] || "");
+      var att = String(existing[r][9] || "");
+      if (sid && lid) {
+        seen[sid + "|" + lid + "|" + att] = true;
+      }
+    }
+  }
+
+  var rowsToAdd = [];
+  for (var i = 0; i < items.length; i++) {
+    var data = items[i] || {};
+    var kSid = String(data.session_id || "");
+    var kLid = String(data.level_id || "");
+    var kAtt = String(Number(data.percobaan_ke || 1));
+    var dedupeKey = kSid + "|" + kLid + "|" + kAtt;
+    if (kSid && kLid && seen[dedupeKey]) {
+      continue;
+    }
+    if (kSid && kLid) {
+      seen[dedupeKey] = true;
+    }
+    rowsToAdd.push([
+      new Date(),
+      kSid,
+      String(data.nama || ""),
+      String(data.kelas || ""),
+      String(data.absen || ""),
+      String(data.minigame_id || ""),
+      kLid,
+      String(data.jawaban_siswa || ""),
+      String(data.kunci_jawaban || ""),
+      String(data.hasil || ""),
+      Number(data.percobaan_ke || 1),
+      Number(data.poin || 0),
+      Number(data.durasi_detik || 0)
+    ]);
+  }
+
+  if (rowsToAdd.length > 0) {
+    var insertAt = Math.max(2, sheet.getLastRow() + 1);
+    sheet.getRange(insertAt, 1, rowsToAdd.length, 13).setValues(rowsToAdd);
+  }
 }
 
 function getLeaderboardSnapshot_() {

@@ -181,13 +181,13 @@ func _build_ui() -> void:
 	_personal_rank_lbl = Label.new()
 	_personal_rank_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_personal_rank_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(_personal_rank_lbl, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(_personal_rank_lbl, 16, UiTheme.COL_INK_PRIMARY)
 	rank_row.add_child(_personal_rank_lbl)
 
 	_personal_stats_lbl = Label.new()
 	_personal_stats_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_personal_stats_lbl.add_theme_font_size_override("font_size", 15)
-	_personal_stats_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	_personal_stats_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	info_v.add_child(_personal_stats_lbl)
 
 	_progress_bar = ProgressBar.new()
@@ -267,8 +267,8 @@ func _create_stage_card(meta: Dictionary, is_next: bool) -> PanelContainer:
 	var title_lbl := Label.new()
 	title_lbl.text = STAGE_LABELS.get(mg_id, str(meta.get("title", "")))
 	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var title_col: Color = UiTheme.COL_GOLD_BRIGHT if is_next else (UiTheme.COL_SUCCESS if done else UiTheme.COL_TEXT_PRIMARY)
-	UiTheme.style_pixel_heading(title_lbl, 16, title_col)
+	var title_col: Color = UiTheme.COL_INK_ACCENT if is_next else (UiTheme.COL_INK_SUCCESS if done else UiTheme.COL_INK_PRIMARY)
+	UiTheme.style_parchment_heading(title_lbl, 16, title_col)
 	text_v.add_child(title_lbl)
 
 	var topics_lbl := Label.new()
@@ -276,7 +276,7 @@ func _create_stage_card(meta: Dictionary, is_next: bool) -> PanelContainer:
 	topics_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	topics_lbl.add_theme_font_override("font", UiTheme.make_mono_font())
 	topics_lbl.add_theme_font_size_override("font_size", 14)
-	topics_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	topics_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	text_v.add_child(topics_lbl)
 
 	# Baris bawah kartu: Bintang & Skor + 1 Tombol Aksi Jelas
@@ -297,7 +297,7 @@ func _create_stage_card(meta: Dictionary, is_next: bool) -> PanelContainer:
 	var status_tag: String = "[SELESAI]" if done else ("[%d/%d]" % [lv_done, lv_total] if lv_done > 0 else "[BARU]")
 	score_lbl.text = "Skor: %d/100  %s" % [score_val, status_tag]
 	score_lbl.add_theme_font_size_override("font_size", 14)
-	score_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS if done else UiTheme.COL_TEXT_SECONDARY)
+	score_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SUCCESS if done else UiTheme.COL_INK_SECONDARY)
 	stat_v.add_child(score_lbl)
 
 	var play_btn := Button.new()

@@ -97,14 +97,14 @@ func _setup_content(parent: VBoxContainer) -> void:
 	b_head.text = "PERINTAH TERPASANG"
 	b_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(b_head, 16, UiTheme.COL_INFO)
+	UiTheme.style_parchment_heading(b_head, 16, UiTheme.COL_INK_INFO)
 	b_top.add_child(b_head)
 
 	_match_lbl = Label.new()
 	_match_lbl.text = "[BELUM COCOK]"
 	_match_lbl.add_theme_font_override("font", mono)
 	_match_lbl.add_theme_font_size_override("font_size", 14)
-	_match_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	_match_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	b_top.add_child(_match_lbl)
 
 	_empty_tokens_lbl = Label.new()
@@ -112,7 +112,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_empty_tokens_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_empty_tokens_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_empty_tokens_lbl.add_theme_font_size_override("font_size", 14)
-	_empty_tokens_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	_empty_tokens_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	b_v.add_child(_empty_tokens_lbl)
 
 	_assembled_flow = FlowContainer.new()
@@ -124,7 +124,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	var d_head := Label.new()
 	d_head.text = "DEK TOKEN PARAMETER & BATCH"
 	d_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(d_head, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(d_head, 16, UiTheme.COL_INK_ACCENT)
 	b_v.add_child(d_head)
 
 	_tokens_flow = FlowContainer.new()
@@ -207,7 +207,7 @@ func _refresh_live_preview() -> void:
 		expected_lines.append(str(ln))
 	var is_match: bool = (lines == expected_lines)
 	_match_lbl.text = "[COCOK]" if is_match else "[BELUM COCOK]"
-	_match_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS if is_match else UiTheme.COL_TEXT_SECONDARY)
+	_match_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SUCCESS if is_match else UiTheme.COL_INK_SECONDARY)
 
 
 static func simulate_crt_output(level: Dictionary, chosen: Array[String]) -> PackedStringArray:

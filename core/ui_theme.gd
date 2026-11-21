@@ -1,12 +1,14 @@
 class_name UiTheme
 extends RefCounted
-## Sistem Tema Retro Pixel Art 128-bit (Endesga-32 inspired, 9-slice crisp, WCAG AA terverifikasi).
+## Sistem Tema Retro Pixel Art 128-bit Dark Stardew-Craft (Endesga-32 palette, bingkai bevel ber-rivet emas, WCAG AA).
 
-# Core #1: Deep Pixel Indigo & Slate-Blue
+# Core #1: Deep Pixel Indigo & Carved Slate-Blue RPG Panels
 const COL_BG_CANVAS := Color("#181425")
+const COL_HEADER_BG := Color("#1F233A")
 const COL_PANEL_BG := Color("#262B44")
-const COL_PANEL_BEVEL_HI := Color("#5A6988")
-const COL_PANEL_BEVEL_SH := Color("#1A1C2C")
+const COL_PANEL_GOLD_BG := Color("#292F4B")
+const COL_PANEL_BEVEL_HI := Color("#607294")
+const COL_PANEL_BEVEL_SH := Color("#181B2B")
 const COL_SLATE := Color("#3A4466")
 
 # Core #2: Royal Pixel Blue & Deep CRT Ink
@@ -15,12 +17,12 @@ const COL_BLUE := Color("#2B59C3")
 const COL_BLUE_HOVER := Color("#3366D9")
 const COL_BLUE_PRESSED := Color("#1F449C")
 
-# Single Deliberate Accent: Arcade Gold
+# Single Deliberate Accent: Arcade Honey Gold
 const COL_GOLD := Color("#FEAE34")
 const COL_GOLD_BRIGHT := Color("#FEE761")
 const COL_GOLD_PRESSED := Color("#E48E24")
 
-# Text Neutrals
+# Text Neutrals (Warm Pixel Cream & Cool Silver)
 const COL_TEXT_PRIMARY := Color("#FFF5E4")
 const COL_TEXT_SECONDARY := Color("#C0CBDC")
 const COL_TEXT_DARK := Color("#181425")
@@ -35,7 +37,14 @@ const COL_INFO := Color("#87E0FF")
 const COL_INFO_BG := Color("#1A2742")
 const COL_WARN := Color("#FEE761")
 
-# Compatibility aliases agar skrip minigame lama tetap sinkron ke palet pixel baru
+# Panel & compatibility ink aliases (semua permukaan panel bernuansa gelap sehingga ink tetap terang & kontras tinggi)
+const COL_INK_PRIMARY := COL_TEXT_PRIMARY
+const COL_INK_SECONDARY := COL_TEXT_SECONDARY
+const COL_INK_ACCENT := COL_GOLD_BRIGHT
+const COL_INK_SUCCESS := COL_SUCCESS
+const COL_INK_ERROR := COL_ERROR
+const COL_INK_INFO := COL_INFO
+
 const COL_SURFACE := COL_PANEL_BG
 const COL_CRT_BG := COL_MONITOR_BG
 const COL_BORDER := COL_PANEL_BEVEL_HI
@@ -121,7 +130,7 @@ static func make_tiled_background() -> TextureRect:
 
 static func make_9slice(
 	filename: String,
-	slice_margin: float = 8.0,
+	slice_margin: float = 9.0,
 	pad_h: float = 12.0,
 	pad_top: float = 10.0,
 	pad_bottom: float = 10.0
@@ -180,14 +189,14 @@ static func create_theme() -> Theme:
 	t.set_color("font_color", "Label", COL_TEXT_PRIMARY)
 	t.set_color("default_color", "RichTextLabel", COL_TEXT_PRIMARY)
 
-	t.set_stylebox("panel", "PanelContainer", make_9slice("panel_rpg.png", 8.0, 14.0, 12.0, 12.0))
+	t.set_stylebox("panel", "PanelContainer", make_9slice("panel_rpg.png", 9.0, 14.0, 12.0, 12.0))
 
 	# Default Button = Royal Pixel Blue tactile 3D button
 	t.set_stylebox("normal", "Button", make_9slice("btn_blue_normal.png", 8.0, 12.0, 8.0, 11.0))
 	t.set_stylebox("hover", "Button", make_9slice("btn_blue_hover.png", 8.0, 12.0, 8.0, 11.0))
 	t.set_stylebox("pressed", "Button", make_9slice("btn_blue_pressed.png", 8.0, 12.0, 11.0, 8.0))
 	t.set_stylebox("focus", "Button", make_focus_box())
-	t.set_stylebox("disabled", "Button", make_box(Color("#202438"), Color("#3A4466"), 2, 0, 10))
+	t.set_stylebox("disabled", "Button", make_box(Color("#1D2136"), Color("#3A4466"), 2, 0, 10))
 	t.set_color("font_color", "Button", COL_WHITE)
 	t.set_color("font_hover_color", "Button", COL_WHITE)
 	t.set_color("font_pressed_color", "Button", COL_WHITE)
@@ -196,7 +205,7 @@ static func create_theme() -> Theme:
 	t.set_font_size("font_size", "Button", 15)
 	t.set_constant("h_separation", "Button", 8)
 
-	# LineEdit = Recessed Pixel Input
+	# LineEdit = Recessed Dark CRT Input
 	t.set_stylebox("normal", "LineEdit", make_9slice("input_box.png", 8.0, 12.0, 10.0, 10.0))
 	t.set_stylebox("focus", "LineEdit", make_9slice("input_box_focus.png", 8.0, 12.0, 10.0, 10.0))
 	t.set_color("font_color", "LineEdit", COL_TEXT_PRIMARY)
@@ -204,7 +213,7 @@ static func create_theme() -> Theme:
 	t.set_color("caret_color", "LineEdit", COL_GOLD_BRIGHT)
 	t.set_font_size("font_size", "LineEdit", 16)
 
-	# ProgressBar = 9-slice crisp pixel energy bar
+	# ProgressBar = Recessed monitor trough + glowing Gold fill
 	var pb_bg := make_9slice("pb_track.png", 4.0, 0.0, 0.0, 0.0)
 	var pb_fg := make_9slice("pb_fill.png", 4.0, 0.0, 0.0, 0.0)
 	t.set_stylebox("background", "ProgressBar", pb_bg)
@@ -214,7 +223,7 @@ static func create_theme() -> Theme:
 
 
 static func style_header_panel(panel: PanelContainer, pad: float = 8.0) -> void:
-	panel.add_theme_stylebox_override("panel", make_9slice("panel_header.png", 8.0, pad, pad, pad + 3.0))
+	panel.add_theme_stylebox_override("panel", make_9slice("panel_header.png", 9.0, pad, pad, pad + 3.0))
 
 
 static func apply_centered_margins(margin_node: MarginContainer, max_width: float = 980.0, base_pad: int = 14) -> void:
@@ -232,16 +241,31 @@ static func apply_centered_margins(margin_node: MarginContainer, max_width: floa
 	margin_node.add_theme_constant_override("margin_right", final_x)
 
 
-static func style_pixel_heading(lbl: Label, px_size: int = 16, col: Color = COL_GOLD_BRIGHT) -> void:
+static func style_pixel_heading(
+	lbl: Label,
+	px_size: int = 16,
+	col: Color = COL_GOLD_BRIGHT,
+	with_shadow: bool = true
+) -> void:
 	var pf := get_pixel_font()
 	if pf != null:
 		lbl.add_theme_font_override("font", pf)
 	lbl.add_theme_font_size_override("font_size", px_size)
 	lbl.add_theme_color_override("font_color", col)
-	lbl.add_theme_color_override("font_shadow_color", COL_BG_CANVAS)
-	lbl.add_theme_constant_override("shadow_offset_x", 0)
-	lbl.add_theme_constant_override("shadow_offset_y", 2)
-	lbl.add_theme_constant_override("shadow_outline_size", 2)
+	if with_shadow:
+		lbl.add_theme_color_override("font_shadow_color", COL_BG_CANVAS)
+		lbl.add_theme_constant_override("shadow_offset_x", 0)
+		lbl.add_theme_constant_override("shadow_offset_y", 2)
+		lbl.add_theme_constant_override("shadow_outline_size", 2)
+	else:
+		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0))
+		lbl.add_theme_constant_override("shadow_offset_x", 0)
+		lbl.add_theme_constant_override("shadow_offset_y", 0)
+		lbl.add_theme_constant_override("shadow_outline_size", 0)
+
+
+static func style_parchment_heading(lbl: Label, px_size: int = 16, col: Color = COL_GOLD_BRIGHT) -> void:
+	style_pixel_heading(lbl, px_size, col, true)
 
 
 static func style_gold_button(btn: Button, icon_name: String = "", use_pixel_font: bool = true) -> void:
@@ -308,15 +332,15 @@ static func style_chip_button(btn: Button, selected: bool = false) -> void:
 
 
 static func style_rpg_panel(panel: PanelContainer, pad: float = 14.0) -> void:
-	panel.add_theme_stylebox_override("panel", make_9slice("panel_rpg.png", 8.0, pad, pad, pad))
+	panel.add_theme_stylebox_override("panel", make_9slice("panel_rpg.png", 9.0, pad, pad, pad))
 
 
 static func style_monitor_panel(panel: PanelContainer, pad: float = 14.0) -> void:
-	panel.add_theme_stylebox_override("panel", make_9slice("panel_monitor.png", 8.0, pad, pad, pad))
+	panel.add_theme_stylebox_override("panel", make_9slice("panel_monitor.png", 9.0, pad, pad, pad))
 
 
 static func style_gold_panel(panel: PanelContainer, pad: float = 14.0) -> void:
-	panel.add_theme_stylebox_override("panel", make_9slice("panel_gold.png", 8.0, pad, pad, pad))
+	panel.add_theme_stylebox_override("panel", make_9slice("panel_gold.png", 9.0, pad, pad, pad))
 
 
 static func style_feedback_panel(panel: PanelContainer, kind: String) -> void:

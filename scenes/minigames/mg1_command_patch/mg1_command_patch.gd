@@ -80,7 +80,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	var deck_title := Label.new()
 	deck_title.text = "DEK BLOK PERINTAH (TAP UNTUK MEMASANG)"
 	deck_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(deck_title, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(deck_title, 16, UiTheme.COL_INK_ACCENT)
 	deck_v.add_child(deck_title)
 
 	_choices_flow = FlowContainer.new()
@@ -132,7 +132,7 @@ func _load_level(level: Dictionary) -> void:
 				lbl.text = txt
 				lbl.add_theme_font_override("font", mono)
 				lbl.add_theme_font_size_override("font_size", 17)
-				lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+				lbl.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
 				lbl_box.add_child(lbl)
 				_tokens_flow.add_child(lbl_box)
 

@@ -124,7 +124,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_empty_pattern_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_empty_pattern_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_empty_pattern_lbl.add_theme_font_size_override("font_size", 14)
-	_empty_pattern_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	_empty_pattern_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	in_v.add_child(_empty_pattern_lbl)
 
 	_assembled_flow = FlowContainer.new()
@@ -136,7 +136,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	var tok_title := Label.new()
 	tok_title.text = "UBIN WILDCARD & POTONGAN NAMA"
 	tok_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_pixel_heading(tok_title, 16, UiTheme.COL_GOLD_BRIGHT)
+	UiTheme.style_parchment_heading(tok_title, 16, UiTheme.COL_INK_ACCENT)
 	in_v.add_child(tok_title)
 
 	_tokens_flow = FlowContainer.new()
