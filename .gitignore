@@ -1,0 +1,16 @@
+# Godot 4 ignores
+.godot/
+.nomedia
+
+# Exports & logs
+build/
+*.log
+*.tmp
+
+# Sensitive credentials
+.godot/export_credentials.cfg
+export_credentials.cfg
+
+# OS files
+.DS_Store
+Thumbs.db
