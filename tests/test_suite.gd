@@ -165,20 +165,17 @@ func _test_catalog_and_buku_saku() -> void:
 		unique_orders["|".join(sh)] = true
 	assert_true(unique_orders.size() >= 3, "Pengacakan pilihan harus menghasilkan variasi urutan acak (got %d)" % unique_orders.size())
 
-	# Uji pinalti waktu (maks 30 detik, grace 10 detik, minimal 10 poin)
+	# Uji penilaian tanpa batas waktu (timer dihapus: jawaban benar selalu 100 poin)
 	assert_eq(GameConfig.min_score_on_solve, 10, "Skor minimal harus 10 poin")
-	assert_eq(int(GameConfig.level_time_limit_sec), 30, "Batas waktu soal harus 30 detik")
-	var sc_fast: Dictionary = BaseMinigame.compute_level_score(6.0, 0, 10, 10, 30.0, 10.0)
-	assert_eq(int(sc_fast["poin"]), 100, "Selesai dalam 6 detik tanpa salah harus dapat 100 poin")
-	assert_eq(int(sc_fast["time_penalty"]), 0, "Selesai dalam 6 detik tidak kena penalti waktu")
-	var sc_mid: Dictionary = BaseMinigame.compute_level_score(20.0, 0, 10, 10, 30.0, 10.0)
-	assert_eq(int(sc_mid["poin"]), 75, "Selesai di detik ke-20 harus kena penalti -25 -> 75 poin")
-	var sc_limit: Dictionary = BaseMinigame.compute_level_score(30.0, 0, 10, 10, 30.0, 10.0)
-	assert_eq(int(sc_limit["poin"]), 50, "Selesai tepat di detik ke-30 harus dapat 50 poin")
-	var sc_over: Dictionary = BaseMinigame.compute_level_score(36.0, 0, 10, 10, 30.0, 10.0)
-	assert_true(int(sc_over["poin"]) < 50 and bool(sc_over["is_overtime"]), "Lewat 30 detik harus masuk overtime dan poin berkurang lagi")
-	var sc_floor: Dictionary = BaseMinigame.compute_level_score(180.0, 5, 10, 10, 30.0, 10.0)
-	assert_eq(int(sc_floor["poin"]), 10, "Penalti waktu + salah berat harus terkunci minimal 10 poin")
+	assert_eq(int(GameConfig.level_time_limit_sec), 0, "Timer batas waktu harus nonaktif (0)")
+	var sc_fast: Dictionary = BaseMinigame.compute_level_score(6.0, 0, 10, 10, 0.0, 0.0)
+	assert_eq(int(sc_fast["poin"]), 100, "Jawaban benar tanpa salah harus dapat 100 poin")
+	assert_eq(int(sc_fast["time_penalty"]), 0, "Tidak ada penalti waktu saat timer nonaktif")
+	var sc_long: Dictionary = BaseMinigame.compute_level_score(120.0, 0, 10, 10, 0.0, 0.0)
+	assert_eq(int(sc_long["poin"]), 100, "Durasi lama tetap dapat 100 poin saat timer dihapus")
+	assert_eq(bool(sc_long["is_overtime"]), false, "Overtime harus false saat timer dihapus")
+	var sc_mistake_floor: Dictionary = BaseMinigame.compute_level_score(10.0, 15, 10, 10, 0.0, 0.0)
+	assert_eq(int(sc_mistake_floor["poin"]), 10, "Batas skor minimal saat salah berulang tetap 10 poin")
 
 	# Uji seluruh metode SFX AudioManager aman dipanggil
 	AudioManager.play_click()
@@ -503,9 +500,12 @@ func _test_ui_interactions_and_states() -> void:
 func _test_minigames_gameplay() -> void:
 	GameSession.start_new_session("Uji Gameplay", "PPLG A", "1")
 
-	# 1. MG1 Command Patch (slot jawaban harus kosong di awal, tanpa ULANG, output di atas input, bisa disematkan)
+	# 1. MG1 Command Patch (slot jawaban harus kosong di awal, tanpa ULANG, output di atas input sticky)
+	var play_vp := SubViewport.new()
+	play_vp.size = Vector2i(1280, 720)
+	get_tree().root.add_child(play_vp)
 	var mg1: BaseMinigame = (load("res://scenes/minigames/mg1_command_patch/mg1_command_patch.tscn") as PackedScene).instantiate() as BaseMinigame
-	get_tree().root.add_child(mg1)
+	play_vp.add_child(mg1)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	for btn_node: Node in mg1.find_children("*", "Button", true, false):
@@ -515,12 +515,11 @@ func _test_minigames_gameplay() -> void:
 	var mg1_out := mg1.get("_output_root") as Control
 	var mg1_in := mg1.get("_input_root") as Control
 	assert_true(mg1_out.get_global_rect().position.y < mg1_in.get_global_rect().position.y, "MG1 Output harus berada di atas Input")
-	assert_eq(mg1.is_input_pinned(), false, "Input MG1 awalnya tidak disematkan")
-	mg1.set_input_pinned(true)
-	await get_tree().process_frame
-	assert_true(mg1.is_input_pinned() and (mg1.get("_pinned_input_panel") as Control).visible, "Tombol sematkan harus mendock panel input di bawah")
-	mg1.set_input_pinned(false)
-	await get_tree().process_frame
+	assert_eq(mg1.is_input_pinned(), true, "Input MG1 harus langsung sticky secara otomatis")
+	assert_true((mg1.get("_pinned_input_panel") as Control).visible, "Dock input sticky harus langsung tampil di atas footer")
+	assert_eq((mg1.get("_pin_input_btn") as Control).visible, false, "Tombol manual SEMATKAN INPUT tidak perlu tampil karena input sudah selalu sticky")
+	var mg1_hud := mg1.get("_hud") as HudBar
+	assert_eq((mg1_hud.get("_timer_lbl") as Control).visible, false, "Timer waktu di HUD harus disembunyikan")
 	var slot_btns: Dictionary = mg1.get("_slot_buttons") as Dictionary
 	assert_true(slot_btns.has(0), "MG1 harus memiliki tombol slot 0")
 	if slot_btns.has(0):
@@ -605,9 +604,9 @@ func _test_minigames_gameplay() -> void:
 	mg3.queue_free()
 	await get_tree().process_frame
 
-	# 4. MG4 Tree Sweeper (Output di atas Input + mode blind navigasi lalu tekan KIRIM JAWABAN)
+	# 4. MG4 Tree Sweeper (Output di atas Input sticky + mode blind navigasi lalu tekan KIRIM JAWABAN)
 	var mg4: BaseMinigame = (load("res://scenes/minigames/mg4_tree_sweeper/mg4_tree_sweeper.tscn") as PackedScene).instantiate() as BaseMinigame
-	get_tree().root.add_child(mg4)
+	play_vp.add_child(mg4)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var mg4_out := mg4.get("_output_root") as Control
@@ -626,6 +625,7 @@ func _test_minigames_gameplay() -> void:
 	assert_eq(GameSession.attempt_logs.back()["hasil"], "SALAH", "MG4 kirim sebelum folder target terhapus harus dinilai SALAH")
 	assert_eq(int(GameSession.attempt_logs.back()["poin"]), 0, "MG4 kirim jawaban gagal harus dapat 0 poin")
 	mg4.queue_free()
+	play_vp.queue_free()
 	await get_tree().process_frame
 
 	# 5. MG5 CRT Config (mode blind menyembunyikan badge [COCOK]/[BELUM COCOK])
@@ -645,7 +645,7 @@ func _test_minigames_gameplay() -> void:
 	mg5.queue_free()
 	await get_tree().process_frame
 
-	# 6. Verifikasi Sematkan Input: saat scroll turun di layar HP, panel input tersemat tidak ikut bergeser
+	# 6. Verifikasi Sticky Input otomatis: saat scroll turun di layar HP, panel input sticky tidak ikut bergeser
 	var pin_vp := SubViewport.new()
 	pin_vp.size = Vector2i(390, 640)
 	get_tree().root.add_child(pin_vp)
@@ -653,17 +653,15 @@ func _test_minigames_gameplay() -> void:
 	pin_vp.add_child(mg3_pin)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	mg3_pin.set_input_pinned(true)
-	await get_tree().process_frame
-	await get_tree().process_frame
+	assert_true(mg3_pin.is_input_pinned(), "Input MG3 harus langsung sticky tanpa klik tombol")
 	var pin_panel := mg3_pin.get("_pinned_input_panel") as Control
 	var mg3_scroll := mg3_pin.get("_scroll") as ScrollContainer
 	var y_before_scroll: float = pin_panel.get_global_rect().position.y
 	mg3_scroll.scroll_vertical = 120
 	await get_tree().process_frame
 	var y_after_scroll: float = pin_panel.get_global_rect().position.y
-	assert_true(absf(y_after_scroll - y_before_scroll) <= 1.0, "Panel input tersemat tidak boleh ikut bergeser saat halaman discroll (before=%.1f, after=%.1f)" % [y_before_scroll, y_after_scroll])
-	assert_true(pin_panel.get_global_rect().end.y <= float(pin_vp.size.y) + 2.0, "Panel input tersemat harus tetap di dalam batas layar HP")
+	assert_true(absf(y_after_scroll - y_before_scroll) <= 1.0, "Panel input sticky tidak boleh ikut bergeser saat halaman discroll (before=%.1f, after=%.1f)" % [y_before_scroll, y_after_scroll])
+	assert_true(pin_panel.get_global_rect().end.y <= float(pin_vp.size.y) + 2.0, "Panel input sticky harus tetap di dalam batas layar HP")
 	pin_vp.queue_free()
 	await get_tree().process_frame
 
@@ -702,7 +700,7 @@ func _test_touch_scrolling() -> void:
 	assert_true(outer_scroll != null and flow_scroll != null, "Stage 2 harus memakai TouchScrollContainer untuk outer & inner scroll")
 	assert_eq(outer_scroll.scroll_vertical, 0, "Scroll awal Stage 2 harus 0")
 
-	var mid_pt: Vector2 = flow_scroll.get_global_rect().get_center()
+	var mid_pt: Vector2 = outer_scroll.get_global_rect().get_center()
 	var t_down := InputEventScreenTouch.new()
 	t_down.index = 0
 	t_down.pressed = true

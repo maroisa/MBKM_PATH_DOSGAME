@@ -26,8 +26,8 @@ var allow_materi_posttest: bool = false
 var allow_retry: bool = false
 var retry_penalty_per_mistake: int = 10
 var min_score_on_solve: int = 10
-var level_time_limit_sec: float = 30.0
-var time_grace_sec: float = 10.0
+var level_time_limit_sec: float = 0.0
+var time_grace_sec: float = 0.0
 var hint_after_mistakes: int = 2
 
 
@@ -137,7 +137,7 @@ func apply_config_json(raw: String) -> bool:
 	allow_retry = bool(dict.get("allow_retry", allow_retry))
 	retry_penalty_per_mistake = int(dict.get("retry_penalty_per_mistake", retry_penalty_per_mistake))
 	min_score_on_solve = int(dict.get("min_score_on_solve", min_score_on_solve))
-	level_time_limit_sec = maxf(10.0, float(dict.get("level_time_limit_sec", level_time_limit_sec)))
+	level_time_limit_sec = maxf(0.0, float(dict.get("level_time_limit_sec", level_time_limit_sec)))
 	time_grace_sec = clampf(float(dict.get("time_grace_sec", time_grace_sec)), 0.0, level_time_limit_sec)
 	hint_after_mistakes = int(dict.get("hint_after_mistakes", hint_after_mistakes))
 	var raw_classes: Variant = dict.get("class_options", null)

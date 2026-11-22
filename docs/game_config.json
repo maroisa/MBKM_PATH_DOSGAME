@@ -16,7 +16,7 @@
   "allow_retry": false,
   "retry_penalty_per_mistake": 10,
   "min_score_on_solve": 10,
-  "level_time_limit_sec": 30,
-  "time_grace_sec": 10,
+  "level_time_limit_sec": 0,
+  "time_grace_sec": 0,
   "hint_after_mistakes": 2
 }

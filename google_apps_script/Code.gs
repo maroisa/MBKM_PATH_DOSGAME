@@ -24,7 +24,7 @@ var DEFAULT_CONFIG = {
   reveal_posttest_results: false,
   allow_materi_pretest: false,
   allow_materi_posttest: false,
-  admin_pin: "2026"
+  admin_pin: "6767"
 };
 
 function onOpen() {

@@ -75,7 +75,8 @@ func _init() -> void:
 	_sub_row.add_child(_score_lbl)
 
 	_timer_lbl = Label.new()
-	_timer_lbl.text = "30s"
+	_timer_lbl.text = ""
+	_timer_lbl.visible = false
 	_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_timer_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	UiTheme.style_pixel_heading(_timer_lbl, 16, UiTheme.COL_INFO)
@@ -134,13 +135,10 @@ func configure(
 	_refresh_labels()
 
 
-func update_timer(remaining_sec: float, is_overtime: bool, penalty_now: int, pulse_now: bool = false) -> void:
-	_remaining_sec = maxf(0.0, remaining_sec)
-	_is_overtime = is_overtime
-	_time_penalty = maxi(0, penalty_now)
-	_refresh_timer_label()
-	if pulse_now and is_inside_tree() and _timer_lbl != null:
-		UiTheme.pulse_control(_timer_lbl, 1.18, 0.16)
+func update_timer(_remaining_sec: float, _is_overtime: bool, _penalty_now: int, _pulse_now: bool = false) -> void:
+	# Timer dihapus sesuai permintaan; simpan metode agar kompatibel.
+	if _timer_lbl != null:
+		_timer_lbl.visible = false
 
 
 func set_compact_mode(compact: bool) -> void:
@@ -187,8 +185,11 @@ func _refresh_labels() -> void:
 			_stage_lbl.text = "STAGE %d (%d/%d)" % [_stage_num, shown_lv, _total_levels]
 		_score_lbl.text = "SKOR: %d" % _score_val
 	_score_lbl.visible = _show_score
+	if _timer_lbl != null:
+		_timer_lbl.visible = false
+	if _sub_row != null:
+		_sub_row.visible = _show_score
 	_guide_btn.visible = _show_materi
-	_refresh_timer_label()
 
 
 func _refresh_timer_label() -> void:

@@ -13,7 +13,7 @@ var _level_elapsed_sec: float = 0.0
 var _last_countdown_sec: int = 30
 var _timeout_warned: bool = false
 var _current_mode: AdaptiveLayout.LayoutMode = AdaptiveLayout.LayoutMode.WIDE_DESKTOP
-var _input_pinned: bool = false
+var _input_pinned: bool = true
 
 var _margin: MarginContainer
 var _main_vbox: VBoxContainer
@@ -48,7 +48,7 @@ func _ready() -> void:
 	_build_shell()
 	_setup_content(_output_root)
 	_setup_input(_input_root)
-	_refresh_pin_button_ui()
+	set_input_pinned(true)
 	GameConfig.exam_config_updated.connect(_on_exam_config_updated)
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_on_viewport_resized()
@@ -100,6 +100,7 @@ func _build_shell() -> void:
 	_scroll = TouchScrollContainer.new()
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll.custom_minimum_size = Vector2(0.0, 120.0)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_main_vbox.add_child(_scroll)
 
@@ -165,11 +166,22 @@ func _build_shell() -> void:
 	_input_root.add_theme_constant_override("separation", 8)
 	_unpinned_input_slot.add_child(_input_root)
 
-	# Dock Input Tersemat (di luar _scroll, tetap diam di atas footer saat scroll game)
+	# Dock Input Sticky (selalu diam di atas footer saat scroll game)
 	_pinned_input_panel = PanelContainer.new()
 	_pinned_input_panel.visible = false
 	_pinned_input_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UiTheme.style_gold_panel(_pinned_input_panel, 8.0)
+	var sticky_sb := StyleBoxFlat.new()
+	sticky_sb.bg_color = Color(0.08, 0.09, 0.16, 0.96)
+	sticky_sb.border_color = UiTheme.COL_GOLD
+	sticky_sb.border_width_top = 2
+	sticky_sb.border_width_left = 0
+	sticky_sb.border_width_right = 0
+	sticky_sb.border_width_bottom = 0
+	sticky_sb.content_margin_top = 6.0
+	sticky_sb.content_margin_bottom = 2.0
+	sticky_sb.content_margin_left = 0.0
+	sticky_sb.content_margin_right = 0.0
+	_pinned_input_panel.add_theme_stylebox_override("panel", sticky_sb)
 	_main_vbox.add_child(_pinned_input_panel)
 
 	_pinned_input_scroll = TouchScrollContainer.new()
@@ -187,7 +199,7 @@ func _build_shell() -> void:
 	_pinned_input_slot.add_theme_constant_override("separation", 8)
 	pin_pad.add_child(_pinned_input_slot)
 
-	# Baris Bawah: Dock Aksi ([ SEMATKAN INPUT ] + [ CEK JAWABAN ] / [ LANJUT > ])
+	# Baris Bawah: Dock Aksi Sticky ([ KIRIM JAWABAN ] / [ LANJUT > ])
 	_footer_panel = PanelContainer.new()
 	_footer_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_rpg_panel(_footer_panel, 10.0)
@@ -199,12 +211,8 @@ func _build_shell() -> void:
 	_footer_panel.add_child(_footer_bar)
 
 	_pin_input_btn = Button.new()
-	_pin_input_btn.text = "SEMATKAN INPUT"
-	_pin_input_btn.custom_minimum_size = Vector2(168.0, 50.0)
-	_pin_input_btn.pressed.connect(func() -> void:
-		set_input_pinned(not _input_pinned)
-		AudioManager.play_pin_toggle(_input_pinned)
-	)
+	_pin_input_btn.visible = false
+	_pin_input_btn.text = "TERSEMAT"
 	_footer_bar.add_child(_pin_input_btn)
 
 	_footer_spacer = Control.new()
@@ -283,32 +291,15 @@ func _update_pinned_dock_height() -> void:
 		return
 	var vp := get_viewport()
 	var vp_h: float = vp.get_visible_rect().size.y if vp != null else 720.0
-	var max_dock_h: float = clampf(vp_h * 0.36, 120.0, 260.0)
-	var needed_h: float = _input_root.get_combined_minimum_size().y + 8.0
-	_pinned_input_scroll.custom_minimum_size = Vector2(0.0, clampf(needed_h, 88.0, max_dock_h))
+	var max_dock_h: float = clampf(vp_h * 0.32, 96.0, 230.0) if vp_h < 700.0 else clampf(vp_h * 0.38, 110.0, 280.0)
+	var needed_h: float = _input_root.get_combined_minimum_size().y + 4.0
+	_pinned_input_scroll.custom_minimum_size = Vector2(0.0, clampf(needed_h, 76.0, max_dock_h))
 
 
 func _refresh_pin_button_ui() -> void:
-	if _pin_input_btn == null:
-		return
-	var has_input: bool = _input_root != null and _input_root.get_child_count() > 0
-	_pin_input_btn.visible = has_input
-	if not has_input:
-		return
-	var is_comp: bool = (_current_mode == AdaptiveLayout.LayoutMode.COMPACT_PORTRAIT)
-	if _input_pinned:
-		_pin_input_btn.text = "TERSEMAT" if is_comp else "TERSEMAT [ON]"
-		_pin_input_btn.tooltip_text = "Lepas sematan area input jawaban"
-		UiTheme.style_chip_button(_pin_input_btn, true)
-		if UiTheme.get_pixel_font() != null:
-			_pin_input_btn.add_theme_font_override("font", UiTheme.get_pixel_font())
-			_pin_input_btn.add_theme_font_size_override("font_size", 14 if is_comp else 15)
-	else:
-		_pin_input_btn.text = "SEMATKAN" if is_comp else "SEMATKAN INPUT"
-		_pin_input_btn.tooltip_text = "Sematkan area input jawaban agar tidak ikut tergeser saat scroll"
-		UiTheme.style_blue_button(_pin_input_btn, "", true)
-		_pin_input_btn.add_theme_font_size_override("font_size", 14 if is_comp else 15)
-	_pin_input_btn.custom_minimum_size = Vector2(116.0 if is_comp else 184.0, 50.0)
+	if _pin_input_btn != null:
+		# Area input sekarang selalu sticky otomatis di atas footer
+		_pin_input_btn.visible = false
 
 
 func _on_viewport_resized() -> void:
@@ -337,34 +328,6 @@ func _process(delta: float) -> void:
 	if _level_solved or _current_index >= _levels.size():
 		return
 	_level_elapsed_sec += delta
-	var limit_sec: float = GameConfig.level_time_limit_sec
-	var rem_sec: float = maxf(0.0, limit_sec - _level_elapsed_sec)
-	var is_overtime: bool = _level_elapsed_sec >= limit_sec
-	var score_info: Dictionary = compute_level_score(
-		_level_elapsed_sec,
-		0,
-		GameConfig.retry_penalty_per_mistake,
-		GameConfig.min_score_on_solve,
-		limit_sec,
-		GameConfig.time_grace_sec
-	)
-	var t_pen: int = int(score_info.get("time_penalty", 0))
-	var cur_sec_int: int = int(ceilf(rem_sec))
-	var pulse_timer: bool = false
-
-	if not is_overtime and cur_sec_int != _last_countdown_sec:
-		_last_countdown_sec = cur_sec_int
-		if cur_sec_int > 0 and cur_sec_int <= 5:
-			AudioManager.play_timer_tick(cur_sec_int <= 3)
-			pulse_timer = true
-	elif is_overtime and not _timeout_warned:
-		_timeout_warned = true
-		_last_countdown_sec = 0
-		AudioManager.play_timeout_warn()
-		pulse_timer = true
-
-	if _hud != null:
-		_hud.update_timer(rem_sec, is_overtime, t_pen, pulse_timer)
 
 
 static func compute_level_score(
@@ -372,24 +335,24 @@ static func compute_level_score(
 	mistakes: int,
 	retry_penalty: int,
 	min_score: int,
-	max_time_sec: float = 30.0,
-	grace_sec: float = 10.0
+	max_time_sec: float = 0.0,
+	grace_sec: float = 0.0
 ) -> Dictionary:
 	var safe_elapsed: float = maxf(0.0, elapsed_sec)
-	var safe_limit: float = maxf(10.0, max_time_sec)
-	var safe_grace: float = clampf(grace_sec, 0.0, safe_limit)
 	var safe_min: int = clampi(min_score, 10, 100)
-	var is_overtime: bool = safe_elapsed > safe_limit
-
+	var is_overtime: bool = false
 	var time_pen: int = 0
-	if safe_elapsed > safe_grace:
-		var within_limit_over: float = minf(safe_elapsed, safe_limit) - safe_grace
-		# Dalam jendela penalti (detik 10 -> 30): -5 poin setiap 2 detik (maks -50 di detik 30)
-		time_pen += int(floorf(within_limit_over / 2.0)) * 5
-		if is_overtime:
-			var overtime_sec: float = safe_elapsed - safe_limit
-			# Lewat batas 30 detik: tambahan penalti -5 poin setiap 3 detik (sampai batas minimal 10 poin)
-			time_pen += (1 + int(floorf(overtime_sec / 3.0))) * 5
+
+	if max_time_sec > 0.0:
+		var safe_limit: float = maxf(10.0, max_time_sec)
+		var safe_grace: float = clampf(grace_sec, 0.0, safe_limit)
+		is_overtime = safe_elapsed > safe_limit
+		if safe_elapsed > safe_grace:
+			var within_limit_over: float = minf(safe_elapsed, safe_limit) - safe_grace
+			time_pen += int(floorf(within_limit_over / 2.0)) * 5
+			if is_overtime:
+				var overtime_sec: float = safe_elapsed - safe_limit
+				time_pen += (1 + int(floorf(overtime_sec / 3.0))) * 5
 
 	var mistake_pen: int = maxi(0, mistakes) * maxi(0, retry_penalty)
 	var raw_poin: int = 100 - time_pen - mistake_pen
@@ -412,7 +375,7 @@ func _load_current_level() -> void:
 	_level_solved = false
 	_level_started_unix = Time.get_unix_time_from_system()
 	_level_elapsed_sec = 0.0
-	_last_countdown_sec = int(ceilf(GameConfig.level_time_limit_sec))
+	_last_countdown_sec = 0
 	_timeout_warned = false
 	_mission_label.text = "Misi: " + str(lv.get("mission", ""))
 	_feedback_box.visible = false
@@ -421,8 +384,6 @@ func _load_current_level() -> void:
 	_check_btn.text = "KIRIM JAWABAN" if GameConfig.exam_blind_mode else "CEK JAWABAN"
 	_next_btn.visible = false
 	_refresh_hud()
-	if _hud != null:
-		_hud.update_timer(GameConfig.level_time_limit_sec, false, 0, false)
 	_load_level(lv)
 	_refresh_pin_button_ui()
 	call_deferred("_update_pinned_dock_height")
