@@ -26,6 +26,39 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_split_box.add_theme_constant_override("separation", 12)
 	parent.add_child(_split_box)
 
+	# Panel Simulasi Monitor DOS (OUTPUT diletakkan pertama / di atas pada layar vertikal)
+	_crt_card = PanelContainer.new()
+	_crt_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_crt_card.custom_minimum_size = Vector2(0.0, 260.0)
+	UiTheme.style_monitor_panel(_crt_card, 14.0)
+	_split_box.add_child(_crt_card)
+
+	var crt_v := VBoxContainer.new()
+	crt_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	crt_v.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	crt_v.add_theme_constant_override("separation", 8)
+	_crt_card.add_child(crt_v)
+
+	var crt_title := Label.new()
+	crt_title.text = "SIMULASI MONITOR DOS"
+	UiTheme.style_pixel_heading(crt_title, 16, UiTheme.COL_INFO)
+	crt_v.add_child(crt_title)
+
+	_sim_scroll = TouchScrollContainer.new()
+	_sim_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sim_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sim_scroll.custom_minimum_size = Vector2(0.0, 200.0)
+	_sim_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	crt_v.add_child(_sim_scroll)
+
+	_sim_log_lbl = Label.new()
+	_sim_log_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sim_log_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sim_log_lbl.add_theme_font_override("font", UiTheme.make_mono_font())
+	_sim_log_lbl.add_theme_font_size_override("font_size", 15)
+	_sim_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
+	_sim_scroll.add_child(_sim_log_lbl)
+
 	# Panel Flowchart (tinggi terkunci dengan ScrollContainer internal agar tidak turun-turun saat tambah blok)
 	_flow_card = PanelContainer.new()
 	_flow_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -62,40 +95,9 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_seq_vbox.add_theme_constant_override("separation", 4)
 	flow_pad.add_child(_seq_vbox)
 
-	# Panel Simulasi Monitor DOS
-	_crt_card = PanelContainer.new()
-	_crt_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_crt_card.custom_minimum_size = Vector2(0.0, 260.0)
-	UiTheme.style_monitor_panel(_crt_card, 14.0)
-	_split_box.add_child(_crt_card)
 
-	var crt_v := VBoxContainer.new()
-	crt_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	crt_v.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	crt_v.add_theme_constant_override("separation", 8)
-	_crt_card.add_child(crt_v)
-
-	var crt_title := Label.new()
-	crt_title.text = "SIMULASI MONITOR DOS"
-	UiTheme.style_pixel_heading(crt_title, 16, UiTheme.COL_INFO)
-	crt_v.add_child(crt_title)
-
-	_sim_scroll = TouchScrollContainer.new()
-	_sim_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_sim_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_sim_scroll.custom_minimum_size = Vector2(0.0, 200.0)
-	_sim_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	crt_v.add_child(_sim_scroll)
-
-	_sim_log_lbl = Label.new()
-	_sim_log_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_sim_log_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sim_log_lbl.add_theme_font_override("font", UiTheme.make_mono_font())
-	_sim_log_lbl.add_theme_font_size_override("font_size", 15)
-	_sim_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
-	_sim_scroll.add_child(_sim_log_lbl)
-
-	# Bank Blok
+func _setup_input(parent: VBoxContainer) -> void:
+	# Bank Blok (INPUT di bawah, bisa disematkan)
 	var bank_card := PanelContainer.new()
 	bank_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_rpg_panel(bank_card, 14.0)
@@ -139,12 +141,12 @@ func _load_level(level: Dictionary) -> void:
 	_all_blocks.clear()
 
 	var raw_blocks: Variant = level.get("blocks", [])
+	var ans_seq: Variant = level.get("answer_sequence", [])
 	if raw_blocks is Array:
-		for b: Variant in raw_blocks as Array:
-			_all_blocks.append(str(b))
-	_all_blocks.shuffle()
+		_all_blocks = LevelsCatalog.shuffled_choices(raw_blocks as Array, ans_seq as Array if ans_seq is Array else [])
 
-	_sim_log_lbl.text = "%s\n> Susun blok langkah di Flowchart, lalu tekan CEK JAWABAN." % str(level.get("start_dir", "C:\\>"))
+	var action_lbl: String = "KIRIM JAWABAN" if GameConfig.exam_blind_mode else "CEK JAWABAN"
+	_sim_log_lbl.text = "%s\n> Susun blok langkah di Bank Blok bawah secara berurutan, lalu tekan %s." % [str(level.get("start_dir", "C:\\>")), action_lbl]
 	_sim_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
 	_rebuild_ui_lists()
 
@@ -161,7 +163,7 @@ func _rebuild_ui_lists() -> void:
 
 	if _sequence.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "Belum ada langkah dipasang. Tap blok perintah di bawah (target %d langkah)." % needed_count
+		empty_lbl.text = "Cara main: Tap blok perintah di Bank Blok bawah secara berurutan (target %d langkah). Gunakan ^ / v untuk tukar posisi atau X untuk melepas." % needed_count
 		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 		_seq_vbox.add_child(empty_lbl)
@@ -232,10 +234,13 @@ func _rebuild_ui_lists() -> void:
 		UiTheme.style_chip_button(b_btn, false)
 		b_btn.pressed.connect(_add_step.bind(blk))
 		_bank_flow.add_child(b_btn)
+	refresh_pinned_layout()
 
 
 func _add_step(step_text: String) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_place()
 	_sequence.append(step_text)
 	_rebuild_ui_lists()
 	call_deferred("_scroll_flow_to_bottom")
@@ -249,14 +254,18 @@ func _scroll_flow_to_bottom() -> void:
 
 
 func _remove_step(idx: int) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_remove()
 	if idx >= 0 and idx < _sequence.size():
 		_sequence.remove_at(idx)
 		_rebuild_ui_lists()
 
 
 func _move_step(idx: int, delta: int) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_place()
 	var target: int = idx + delta
 	if idx < 0 or idx >= _sequence.size() or target < 0 or target >= _sequence.size():
 		return
@@ -270,6 +279,18 @@ func _on_submit_pressed() -> void:
 	var ans_arr: Array[String] = []
 	for item: Variant in _current_level.get("answer_sequence", []) as Array:
 		ans_arr.append(str(item))
+
+	if GameConfig.exam_blind_mode:
+		if _sequence.is_empty():
+			show_info_feedback("Pasang minimal 1 blok langkah di Flowchart terlebih dahulu.")
+			return
+		var user_blind: String = " -> ".join(_sequence)
+		var key_blind: String = " -> ".join(ans_arr)
+		var is_ok_blind: bool = (_sequence == ans_arr)
+		_sim_log_lbl.text = "Urutan dikirim (%d langkah):\n%s\n\n> Jawaban tersimpan ke sistem." % [_sequence.size(), user_blind]
+		_sim_log_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+		submit_attempt(user_blind, key_blind, is_ok_blind, "")
+		return
 
 	var user_joined: String = " -> ".join(_sequence) if not _sequence.is_empty() else "(kosong)"
 	var key_joined: String = " -> ".join(ans_arr)

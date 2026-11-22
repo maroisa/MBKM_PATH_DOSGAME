@@ -1,10 +1,11 @@
 extends BaseMinigame
-## Stage 1: Debugger Sintaks (CMD_PATCH.EXE) - Perbaiki blok perintah DOS yang rusak.
+## Stage 1: Lengkapi Perintah DOS (CMD_PATCH.EXE) - Output di atas, input slot & dek blok di bawah (bisa disematkan).
 
 var _crt_panel: PanelContainer
+var _cmd_preview_lbl: Label
+var _crt_log_lbl: Label
 var _prompt_lbl: Label
 var _tokens_flow: FlowContainer
-var _crt_log_lbl: Label
 var _choices_flow: FlowContainer
 
 var _current_level: Dictionary = {}
@@ -18,6 +19,7 @@ func _get_buku_saku_tab() -> String:
 
 
 func _setup_content(parent: VBoxContainer) -> void:
+	# OUTPUT (di atas): Monitor Terminal DOS
 	_crt_panel = PanelContainer.new()
 	_crt_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_monitor_panel(_crt_panel, 14.0)
@@ -25,21 +27,57 @@ func _setup_content(parent: VBoxContainer) -> void:
 
 	var crt_v := VBoxContainer.new()
 	crt_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	crt_v.add_theme_constant_override("separation", 10)
+	crt_v.add_theme_constant_override("separation", 8)
 	_crt_panel.add_child(crt_v)
 
+	var out_title := Label.new()
+	out_title.text = "OUTPUT TERMINAL DOS"
+	UiTheme.style_pixel_heading(out_title, 16, UiTheme.COL_INFO)
+	crt_v.add_child(out_title)
+
+	var mono := UiTheme.make_mono_font()
+
+	_cmd_preview_lbl = Label.new()
+	_cmd_preview_lbl.text = "C:\\>"
+	_cmd_preview_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_cmd_preview_lbl.add_theme_font_override("font", mono)
+	_cmd_preview_lbl.add_theme_font_size_override("font_size", 17)
+	_cmd_preview_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS)
+	crt_v.add_child(_cmd_preview_lbl)
+
+	_crt_log_lbl = Label.new()
+	_crt_log_lbl.text = "> Menunggu perintah diisi..."
+	_crt_log_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_crt_log_lbl.add_theme_font_override("font", mono)
+	_crt_log_lbl.add_theme_font_size_override("font_size", 15)
+	_crt_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	crt_v.add_child(_crt_log_lbl)
+
+
+func _setup_input(parent: VBoxContainer) -> void:
+	# INPUT (di bawah, bisa disematkan): Slot Perintah + Dek Pilihan Blok
+	var deck_card := PanelContainer.new()
+	deck_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiTheme.style_rpg_panel(deck_card, 14.0)
+	parent.add_child(deck_card)
+
+	var deck_v := VBoxContainer.new()
+	deck_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	deck_v.add_theme_constant_override("separation", 10)
+	deck_card.add_child(deck_v)
+
 	var guide_lbl := Label.new()
-	guide_lbl.text = "Ketuk blok merah/emas yang perlu diperbaiki, lalu pilih blok pengganti di bawah:"
+	guide_lbl.text = "Cara main: 1) Ketuk kotak slot kosong di bawah  2) Pilih blok perintah yang tepat  3) Tekan KIRIM JAWABAN." if GameConfig.exam_blind_mode else "Cara main: 1) Ketuk kotak slot kosong di bawah  2) Pilih blok perintah yang tepat  3) Tekan CEK JAWABAN."
 	guide_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	guide_lbl.add_theme_font_size_override("font_size", 14)
 	guide_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
-	crt_v.add_child(guide_lbl)
+	deck_v.add_child(guide_lbl)
 
 	var cmd_row := FlowContainer.new()
 	cmd_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cmd_row.add_theme_constant_override("h_separation", 8)
 	cmd_row.add_theme_constant_override("v_separation", 8)
-	crt_v.add_child(cmd_row)
+	deck_v.add_child(cmd_row)
 
 	var mono := UiTheme.make_mono_font()
 
@@ -58,25 +96,6 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_tokens_flow.add_theme_constant_override("v_separation", 8)
 	cmd_row.add_child(_tokens_flow)
 
-	_crt_log_lbl = Label.new()
-	_crt_log_lbl.text = "> Menunggu eksekusi..."
-	_crt_log_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_crt_log_lbl.add_theme_font_override("font", mono)
-	_crt_log_lbl.add_theme_font_size_override("font_size", 15)
-	_crt_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
-	crt_v.add_child(_crt_log_lbl)
-
-	# Dek pilihan blok pengganti
-	var deck_card := PanelContainer.new()
-	deck_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UiTheme.style_rpg_panel(deck_card, 14.0)
-	parent.add_child(deck_card)
-
-	var deck_v := VBoxContainer.new()
-	deck_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	deck_v.add_theme_constant_override("separation", 8)
-	deck_card.add_child(deck_v)
-
 	var deck_title := Label.new()
 	deck_title.text = "DEK BLOK PERINTAH (TAP UNTUK MEMASANG)"
 	deck_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -93,7 +112,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 func _load_level(level: Dictionary) -> void:
 	_current_level = level
 	_prompt_lbl.text = str(level.get("prompt_dir", "C:\\>"))
-	_crt_log_lbl.text = "> Siap memperbaiki baris perintah. Pilih slot lalu ketuk blok pengganti."
+	_crt_log_lbl.text = "> Pilih slot kosong di bawah lalu ketuk blok perintah untuk melengkapi."
 	_crt_log_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
 
 	_slot_values.clear()
@@ -113,11 +132,12 @@ func _load_level(level: Dictionary) -> void:
 			var tok: Dictionary = arr[i] as Dictionary
 			var txt: String = str(tok.get("text", ""))
 			var editable: bool = bool(tok.get("editable", false))
-			_slot_values.append(txt)
 
 			if editable:
+				_slot_values.append("")
 				var btn := Button.new()
-				btn.text = txt
+				btn.text = ""
+				btn.tooltip_text = "Ketuk untuk memilih slot jawaban"
 				btn.add_theme_font_override("font", mono)
 				btn.add_theme_font_size_override("font_size", 17)
 				btn.pressed.connect(_on_slot_pressed.bind(i))
@@ -126,8 +146,9 @@ func _load_level(level: Dictionary) -> void:
 				if _selected_slot == -1:
 					_selected_slot = i
 			else:
+				_slot_values.append(txt)
 				var lbl_box := PanelContainer.new()
-				UiTheme.style_rpg_panel(lbl_box, 10.0)
+				UiTheme.style_monitor_panel(lbl_box, 10.0)
 				var lbl := Label.new()
 				lbl.text = txt
 				lbl.add_theme_font_override("font", mono)
@@ -138,8 +159,13 @@ func _load_level(level: Dictionary) -> void:
 
 	var choices: Variant = level.get("choices", [])
 	if choices is Array:
-		for c: Variant in choices as Array:
-			var c_str: String = str(c)
+		var answers_to_avoid: Array = []
+		if tokens is Array:
+			for tk: Variant in tokens as Array:
+				if tk is Dictionary and bool((tk as Dictionary).get("editable", false)):
+					answers_to_avoid.append(str((tk as Dictionary).get("answer", "")))
+		var shuffled: Array[String] = LevelsCatalog.shuffled_choices(choices as Array, answers_to_avoid)
+		for c_str: String in shuffled:
 			var c_btn := Button.new()
 			c_btn.text = c_str
 			c_btn.add_theme_font_override("font", mono)
@@ -149,16 +175,29 @@ func _load_level(level: Dictionary) -> void:
 			_choices_flow.add_child(c_btn)
 
 	_refresh_slot_styles()
+	_refresh_command_preview()
+	refresh_pinned_layout()
+
+
+func _refresh_command_preview() -> void:
+	var parts := PackedStringArray()
+	for v: String in _slot_values:
+		parts.append("____" if v.strip_edges().is_empty() else v)
+	_cmd_preview_lbl.text = "%s %s" % [_prompt_lbl.text, " ".join(parts)]
 
 
 func _on_slot_pressed(idx: int) -> void:
+	if _level_solved:
+		return
 	AudioManager.play_click()
 	_selected_slot = idx
 	_refresh_slot_styles()
 
 
 func _on_choice_pressed(choice_text: String) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_place()
 	if _selected_slot == -1 or not _slot_buttons.has(_selected_slot):
 		return
 	_slot_values[_selected_slot] = choice_text
@@ -168,30 +207,63 @@ func _on_choice_pressed(choice_text: String) -> void:
 
 	var keys: Array = _slot_buttons.keys()
 	keys.sort()
-	var pos: int = keys.find(_selected_slot)
-	if pos >= 0 and keys.size() > 1:
-		_selected_slot = int(keys[(pos + 1) % keys.size()])
+	if keys.size() > 1:
+		var pos: int = keys.find(_selected_slot)
+		var next_empty: int = -1
+		for offset: int in range(1, keys.size()):
+			var cand: int = int(keys[(pos + offset) % keys.size()])
+			if _slot_values[cand].strip_edges().is_empty():
+				next_empty = cand
+				break
+		if next_empty != -1:
+			_selected_slot = next_empty
+		elif pos >= 0:
+			_selected_slot = int(keys[(pos + 1) % keys.size()])
 	_refresh_slot_styles()
+	_refresh_command_preview()
+	refresh_pinned_layout()
 
 
 func _refresh_slot_styles() -> void:
 	for idx: int in _slot_buttons.keys():
 		var btn: Button = _slot_buttons[idx]
 		var is_sel: bool = (idx == _selected_slot)
+		var is_empty: bool = _slot_values[idx].strip_edges().is_empty()
 		btn.custom_minimum_size = Vector2(96.0, UiTheme.MIN_TAP_HEIGHT)
 		if is_sel:
 			UiTheme.style_chip_button(btn, true)
-		else:
-			btn.add_theme_stylebox_override("normal", UiTheme.make_box(UiTheme.COL_ERROR_BG, UiTheme.COL_ERROR, 2, 0, 10))
+		elif is_empty:
+			btn.add_theme_stylebox_override("normal", UiTheme.make_box(UiTheme.COL_MONITOR_BG, UiTheme.COL_GOLD, 2, 0, 10))
 			btn.add_theme_stylebox_override("hover", UiTheme.make_box(UiTheme.COL_BLUE, UiTheme.COL_GOLD_BRIGHT, 2, 0, 10))
 			btn.add_theme_stylebox_override("pressed", UiTheme.make_box(UiTheme.COL_BLUE_PRESSED, UiTheme.COL_GOLD_BRIGHT, 2, 0, 10))
 			btn.add_theme_stylebox_override("focus", UiTheme.make_focus_box())
-			btn.add_theme_color_override("font_color", UiTheme.COL_ERROR)
+			btn.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
 			UiTheme.attach_button_feel(btn)
+		else:
+			UiTheme.style_chip_button(btn, false)
 
 
 func _on_submit_pressed() -> void:
 	var tokens: Variant = _current_level.get("tokens", [])
+	var first_empty_slot: int = -1
+	if tokens is Array:
+		var check_arr := tokens as Array
+		for i: int in range(check_arr.size()):
+			var tok: Dictionary = check_arr[i] as Dictionary
+			if bool(tok.get("editable", false)) and _slot_values[i].strip_edges().is_empty():
+				first_empty_slot = i
+				break
+
+	if first_empty_slot != -1:
+		_selected_slot = first_empty_slot
+		_refresh_slot_styles()
+		var empty_msg: String = "Slot jawaban masih kosong! Pilih blok perintah di bawah terlebih dahulu."
+		_crt_log_lbl.text = "> [INFO] " + empty_msg
+		_crt_log_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+		UiTheme.shake_control(_crt_panel, 6.0)
+		show_info_feedback(empty_msg)
+		return
+
 	var user_cmd: String = " ".join(_slot_values)
 	var key_parts: Array[String] = []
 	var all_correct: bool = true
@@ -213,6 +285,12 @@ func _on_submit_pressed() -> void:
 				key_parts.append(str(tok.get("text", "")))
 
 	var key_cmd: String = " ".join(key_parts)
+	if GameConfig.exam_blind_mode:
+		_crt_log_lbl.text = "%s %s\n> Jawaban dikirim dan tersimpan ke sistem." % [_prompt_lbl.text, user_cmd]
+		_crt_log_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+		submit_attempt(user_cmd, key_cmd, all_correct, "")
+		return
+
 	if all_correct:
 		var ok_out: String = str(_current_level.get("success_output", "Perintah berhasil dijalankan."))
 		_crt_log_lbl.text = "%s %s\n%s" % [_prompt_lbl.text, user_cmd, ok_out]

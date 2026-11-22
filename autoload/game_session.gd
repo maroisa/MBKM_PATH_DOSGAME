@@ -10,6 +10,7 @@ const MG_IDS: Array[String] = ["mg1", "mg2", "mg3", "mg4", "mg5"]
 var save_path: String = DEFAULT_SAVE_PATH
 
 var session_id: String = ""
+var test_mode: String = "PRETEST"
 var nama: String = ""
 var kelas: String = ""
 var absen: String = ""
@@ -21,6 +22,7 @@ var mg_scores: Dictionary[String, int] = {"mg1": 0, "mg2": 0, "mg3": 0, "mg4": 0
 var mg_completed: Dictionary[String, bool] = {"mg1": false, "mg2": false, "mg3": false, "mg4": false, "mg5": false}
 var mg_levels_done: Dictionary[String, int] = {"mg1": 0, "mg2": 0, "mg3": 0, "mg4": 0, "mg5": 0}
 var level_best_scores: Dictionary[String, int] = {}
+var level_answered: Dictionary[String, bool] = {}
 var attempt_logs: Array[Dictionary] = []
 var pending_telemetry: Array[Dictionary] = []
 var synced_log_count: int = 0
@@ -34,13 +36,14 @@ func has_active_session() -> bool:
 	return not session_id.is_empty() and not nama.is_empty()
 
 
-func start_new_session(p_nama: String, p_kelas: String, p_absen: String) -> void:
+func start_new_session(p_nama: String, p_kelas: String, p_absen: String, p_mode: String = "") -> void:
 	nama = p_nama.strip_edges()
 	kelas = p_kelas.strip_edges()
 	absen = p_absen.strip_edges()
+	test_mode = GameConfig.normalize_test_mode(p_mode if not p_mode.is_empty() else GameConfig.active_test_mode)
 	started_unix = int(Time.get_unix_time_from_system())
 	waktu_mulai_iso = Time.get_datetime_string_from_system(false, true)
-	session_id = "DOS-%d-%04d" % [started_unix, randi() % 10000]
+	session_id = "DOS-%s-%d-%04d" % [test_mode, started_unix, randi() % 10000]
 	device_info = _detect_device_label()
 
 	for mg_id: String in MG_IDS:
@@ -48,6 +51,7 @@ func start_new_session(p_nama: String, p_kelas: String, p_absen: String) -> void
 		mg_completed[mg_id] = false
 		mg_levels_done[mg_id] = 0
 	level_best_scores.clear()
+	level_answered.clear()
 	attempt_logs.clear()
 	pending_telemetry.clear()
 	synced_log_count = 0
@@ -57,6 +61,7 @@ func start_new_session(p_nama: String, p_kelas: String, p_absen: String) -> void
 
 func clear_session() -> void:
 	session_id = ""
+	test_mode = GameConfig.active_test_mode
 	nama = ""
 	kelas = ""
 	absen = ""
@@ -67,6 +72,7 @@ func clear_session() -> void:
 		mg_completed[mg_id] = false
 		mg_levels_done[mg_id] = 0
 	level_best_scores.clear()
+	level_answered.clear()
 	attempt_logs.clear()
 	pending_telemetry.clear()
 	synced_log_count = 0
@@ -85,9 +91,11 @@ func record_attempt(
 	poin: int,
 	durasi_detik: float
 ) -> Dictionary:
+	var final_poin: int = poin if is_correct else 0
 	var entry: Dictionary = {
 		"timestamp": Time.get_datetime_string_from_system(false, true),
 		"session_id": session_id,
+		"test_mode": test_mode,
 		"nama": nama,
 		"kelas": kelas,
 		"absen": absen,
@@ -98,14 +106,20 @@ func record_attempt(
 		"kunci_jawaban": kunci_jawaban,
 		"hasil": "BENAR" if is_correct else "SALAH",
 		"percobaan_ke": percobaan_ke,
-		"poin": poin if is_correct else 0,
+		"poin": final_poin,
 		"durasi_detik": int(roundf(durasi_detik)),
 	}
 	attempt_logs.append(entry)
 
-	if is_correct:
+	if GameConfig.exam_blind_mode:
+		if not level_answered.has(level_id):
+			level_answered[level_id] = true
+			level_best_scores[level_id] = final_poin
+		_recompute_minigame_summary(mg_id)
+	elif is_correct:
+		level_answered[level_id] = true
 		var prev_best: int = level_best_scores.get(level_id, 0)
-		level_best_scores[level_id] = maxi(prev_best, poin)
+		level_best_scores[level_id] = maxi(prev_best, final_poin)
 		_recompute_minigame_summary(mg_id)
 
 	save_to_disk()
@@ -126,9 +140,9 @@ func _recompute_minigame_summary(mg_id: String) -> void:
 	var done_count: int = 0
 	for lv: Dictionary in levels:
 		var lid: String = str(lv.get("id", ""))
-		if level_best_scores.has(lid):
+		if level_answered.has(lid) or level_best_scores.has(lid):
 			done_count += 1
-			sum_pts += int(level_best_scores[lid])
+			sum_pts += int(level_best_scores.get(lid, 0))
 	var avg_score: int = int(roundf(float(sum_pts) / float(maxi(1, levels.size()))))
 	mg_scores[mg_id] = avg_score
 	mg_levels_done[mg_id] = done_count
@@ -162,6 +176,7 @@ func build_session_summary_payload(event_name: String) -> Dictionary:
 	return {
 		"event": event_name,
 		"session_id": session_id,
+		"test_mode": test_mode,
 		"waktu_mulai": waktu_mulai_iso,
 		"nama": nama,
 		"kelas": kelas,
@@ -183,6 +198,7 @@ func capture_state() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
 		"session_id": session_id,
+		"test_mode": test_mode,
 		"nama": nama,
 		"kelas": kelas,
 		"absen": absen,
@@ -193,6 +209,7 @@ func capture_state() -> Dictionary:
 		"mg_completed": mg_completed.duplicate(),
 		"mg_levels_done": mg_levels_done.duplicate(),
 		"level_best_scores": level_best_scores.duplicate(),
+		"level_answered": level_answered.duplicate(),
 		"attempt_logs": attempt_logs.duplicate(true),
 		"pending_telemetry": pending_telemetry.duplicate(true),
 		"synced_log_count": synced_log_count,
@@ -201,6 +218,7 @@ func capture_state() -> Dictionary:
 
 func apply_state(data: Dictionary) -> void:
 	session_id = str(data.get("session_id", ""))
+	test_mode = GameConfig.normalize_test_mode(str(data.get("test_mode", "PRETEST")))
 	nama = str(data.get("nama", ""))
 	kelas = str(data.get("kelas", ""))
 	absen = str(data.get("absen", ""))
@@ -221,6 +239,14 @@ func apply_state(data: Dictionary) -> void:
 	if raw_best is Dictionary:
 		for k: Variant in (raw_best as Dictionary).keys():
 			level_best_scores[str(k)] = int((raw_best as Dictionary)[k])
+
+	level_answered.clear()
+	var raw_ans: Variant = data.get("level_answered", {})
+	if raw_ans is Dictionary:
+		for k: Variant in (raw_ans as Dictionary).keys():
+			level_answered[str(k)] = bool((raw_ans as Dictionary)[k])
+	for bk: String in level_best_scores.keys():
+		level_answered[bk] = true
 
 	attempt_logs.clear()
 	var raw_logs: Variant = data.get("attempt_logs", [])

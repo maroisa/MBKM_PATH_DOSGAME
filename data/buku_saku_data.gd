@@ -77,7 +77,7 @@ static func get_sections() -> Array[Dictionary]:
 				},
 				{
 					"heading": "Contoh Pola & Analisis",
-					"body": "- dir *.exe -> semua file berekstensi .exe.\n- dir ?ebek.exe -> cocok untuk bebek.exe, tebek.exe, lebek.exe; TIDAK cocok untuk ebek.exe (kurang 1 huruf depan) atau tebek_lama.exe.\n- copy ??g*.* C:\\latdos -> salin semua file yang huruf ketiganya 'g' (misal tugas.doc, lagu.mp3, log.txt)."
+					"body": "- dir *.exe -> semua file berekstensi .exe.\n- dir ?ode.exe -> cocok untuk kode.exe, mode.exe, node.exe; TIDAK cocok untuk ode.exe (kurang 1 huruf depan) atau node_baru.exe.\n- copy ??r*.* C:\\Backup -> salin semua file yang huruf ketiganya 'r' (misal kerja.doc, surat.pdf, baris.txt)."
 				}
 			]
 		},
@@ -109,11 +109,11 @@ static func get_sections() -> Array[Dictionary]:
 			"blocks": [
 				{
 					"heading": "Kode Parameter PROMPT",
-					"body": "$p : path aktif  |  $g : karakter >  |  $l : karakter <\n$n : drive aktif  |  $_ : pindah baris (Enter)\n$t : jam aktif  |  $d : tanggal aktif  |  $v : versi OS\n$$ : karakter $  |  $b : karakter |  |  $q : karakter =\nContoh: PROMPT SMK$_$P$G -> mencetak 'SMK' di baris 1 lalu 'D:\\TUGAS>' di baris 2."
+					"body": "$p : path aktif  |  $g : karakter >  |  $l : karakter <\n$n : drive aktif  |  $_ : pindah baris (Enter)\n$t : jam aktif  |  $d : tanggal aktif  |  $v : versi OS\n$$ : karakter $  |  $b : karakter |  |  $q : karakter =\nContoh: PROMPT LAB_CLI$_$P$G -> mencetak 'LAB_CLI' di baris 1 lalu 'D:\\PRAKTIK>' di baris 2."
 				},
 				{
 					"heading": "Membuat Skrip Batch dengan COPY CON",
-					"body": "Ketik: COPY CON LATIHAN.BAT lalu tulis baris perintah:\n@ECHO OFF   (menyembunyikan baris perintah agar tidak ikut tampil)\nCLS         (membersihkan layar)\nECHO HALO   (menampilkan pesan teks; pakai ECHO. untuk baris kosong)\nPAUSE       (menjeda layar sampai tombol ditekan)\nSimpan skrip: tekan Ctrl + Z atau F6 lalu Enter."
+					"body": "Ketik: COPY CON MULAI.BAT lalu tulis baris perintah:\n@ECHO OFF   (menyembunyikan baris perintah agar tidak ikut tampil)\nCLS         (membersihkan layar)\nECHO HALO   (menampilkan pesan teks; pakai ECHO. untuk baris kosong)\nPAUSE       (menjeda layar sampai tombol ditekan)\nSimpan skrip: tekan Ctrl + Z atau F6 lalu Enter."
 				}
 			]
 		}

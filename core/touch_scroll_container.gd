@@ -24,16 +24,57 @@ var _last_drag_msec: int = 0
 var _decelerating: bool = false
 var _pressed_button: BaseButton = null
 var _suppress_emulated_release_until_msec: int = 0
+var _default_h_scroll_mode: ScrollMode = ScrollContainer.SCROLL_MODE_DISABLED
 
 
 func _ready() -> void:
 	# Nonaktifkan touch-drag bawaan agar tidak terjadi double-scroll dengan handler sentuhan kustom;
 	# roda mouse desktop, trackpad pan gesture, dan drag scrollbar samping tetap aktif secara native.
 	scroll_deadzone = 10000
+	_default_h_scroll_mode = horizontal_scroll_mode
 	set_process(false)
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if router != null:
+		if router.has_signal("pinch_zoom_started") and not router.is_connected("pinch_zoom_started", _on_pinch_zoom_started):
+			router.connect("pinch_zoom_started", _on_pinch_zoom_started)
+		if router.has_signal("zoom_changed") and not router.is_connected("zoom_changed", _on_zoom_changed):
+			router.connect("zoom_changed", _on_zoom_changed)
+	if get_viewport() != null and not get_viewport().size_changed.is_connected(_sync_zoom_horizontal_scroll):
+		get_viewport().size_changed.connect(_sync_zoom_horizontal_scroll)
+	_sync_zoom_horizontal_scroll()
+
+
+func _on_pinch_zoom_started() -> void:
+	_cancel_pressed_button()
+	_reset_touch_state()
+
+
+func _on_zoom_changed(_new_zoom: float) -> void:
+	_sync_zoom_horizontal_scroll()
+
+
+func _sync_zoom_horizontal_scroll() -> void:
+	if not is_inside_tree() or get_viewport() == null:
+		return
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	var z: float = float(router.call("get_user_zoom")) if (router != null and router.has_method("get_user_zoom")) else 1.0
+	var vp_w: float = get_viewport().get_visible_rect().size.x
+	if _default_h_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED:
+		if z > 1.05 and vp_w < 360.0:
+			horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		else:
+			horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+			scroll_horizontal = 0
 
 
 func _input(event: InputEvent) -> void:
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if router != null and router.has_method("is_pinch_zooming") and bool(router.call("is_pinch_zooming")):
+		if _touch_active or _is_dragging or _pressed_button != null:
+			_cancel_pressed_button()
+			_reset_touch_state()
+		return
+
 	if not _is_interaction_enabled():
 		if _touch_active or _is_dragging:
 			_reset_touch_state()
@@ -62,6 +103,9 @@ func _input(event: InputEvent) -> void:
 func _handle_screen_touch(ev: InputEventScreenTouch) -> void:
 	if ev.pressed:
 		if _touch_active and _touch_id != ev.index:
+			# Jari kedua menyentuh layar: hentikan scroll 1-jari agar tidak bertabrakan dengan pinch-to-zoom.
+			_cancel_pressed_button()
+			_reset_touch_state()
 			return
 		var local_ev := make_input_local(ev) as InputEventScreenTouch
 		if local_ev == null:

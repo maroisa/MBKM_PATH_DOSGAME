@@ -10,7 +10,7 @@ const STAGE_ICONS: Dictionary[String, String] = {
 }
 
 const STAGE_LABELS: Dictionary[String, String] = {
-	"mg1": "STAGE 1: Debugger Sintaks",
+	"mg1": "STAGE 1: Lengkapi Perintah DOS",
 	"mg2": "STAGE 2: Rakit Flowchart",
 	"mg3": "STAGE 3: Filter Wildcard",
 	"mg4": "STAGE 4: Labirin Folder",
@@ -18,12 +18,14 @@ const STAGE_LABELS: Dictionary[String, String] = {
 }
 
 var _margin: MarginContainer
+var _hdr_lbl: Label
 var _back_btn: Button
 var _new_btn: Button
 var _sfx_btn: Button
 var _summary_split: BoxContainer
 var _summary_lbl: Label
 var _rank_lbl: Label
+var _avg_cap_lbl: Label
 var _avg_score_lbl: Label
 var _avg_stars_slot: HBoxContainer
 var _sync_status_lbl: Label
@@ -42,14 +44,30 @@ func _ready() -> void:
 	_build_ui()
 	TelemetryService.sync_status_changed.connect(_on_sync_changed)
 	TelemetryService.leaderboard_updated.connect(_on_leaderboard_updated)
+	GameConfig.exam_config_updated.connect(_on_exam_config_updated)
 	AudioManager.mute_changed.connect(_on_mute_changed)
 	get_viewport().size_changed.connect(_on_resized)
 	_on_resized()
 	_populate_report()
+	if DisplayServer.get_name() != "headless" and GameConfig.has_valid_apps_script_url():
+		TelemetryService.fetch_remote_exam_config()
 	# Satu pintu auto-sync saat Rapor dibuka: hindari ganda POST/GET bersamaan
 	TelemetryService.sync_session_now(true)
-	if _csv_btn != null:
+	if _csv_btn != null and _csv_btn.visible:
 		_csv_btn.grab_focus()
+	elif _retry_sync_btn != null:
+		_retry_sync_btn.grab_focus()
+
+
+func _exit_tree() -> void:
+	if TelemetryService.sync_status_changed.is_connected(_on_sync_changed):
+		TelemetryService.sync_status_changed.disconnect(_on_sync_changed)
+	if TelemetryService.leaderboard_updated.is_connected(_on_leaderboard_updated):
+		TelemetryService.leaderboard_updated.disconnect(_on_leaderboard_updated)
+	if GameConfig.exam_config_updated.is_connected(_on_exam_config_updated):
+		GameConfig.exam_config_updated.disconnect(_on_exam_config_updated)
+	if AudioManager.mute_changed.is_connected(_on_mute_changed):
+		AudioManager.mute_changed.disconnect(_on_mute_changed)
 
 
 func _build_ui() -> void:
@@ -90,13 +108,16 @@ func _build_ui() -> void:
 	)
 	top_row.add_child(_back_btn)
 
-	var hdr_lbl := Label.new()
-	hdr_lbl.text = "RAPOR HASIL"
-	hdr_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hdr_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hdr_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	UiTheme.style_pixel_heading(hdr_lbl, 16, UiTheme.COL_GOLD_BRIGHT, true)
-	top_row.add_child(hdr_lbl)
+	_hdr_lbl = Label.new()
+	_hdr_lbl.text = "RAPOR HASIL"
+	_hdr_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hdr_lbl.custom_minimum_size = Vector2(60.0, 0.0)
+	_hdr_lbl.clip_text = true
+	_hdr_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_hdr_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hdr_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiTheme.style_pixel_heading(_hdr_lbl, 16, UiTheme.COL_GOLD_BRIGHT, true)
+	top_row.add_child(_hdr_lbl)
 
 	_new_btn = Button.new()
 	_new_btn.text = "SISWA BARU"
@@ -196,12 +217,12 @@ func _build_ui() -> void:
 	sb_v.add_theme_constant_override("separation", 6)
 	score_box.add_child(sb_v)
 
-	var avg_cap := Label.new()
-	avg_cap.text = "RATA-RATA"
-	avg_cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	avg_cap.add_theme_font_size_override("font_size", 13)
-	avg_cap.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
-	sb_v.add_child(avg_cap)
+	_avg_cap_lbl = Label.new()
+	_avg_cap_lbl.text = "RATA-RATA"
+	_avg_cap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_avg_cap_lbl.add_theme_font_size_override("font_size", 13)
+	_avg_cap_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+	sb_v.add_child(_avg_cap_lbl)
 
 	_avg_score_lbl = Label.new()
 	_avg_score_lbl.text = "0.0"
@@ -266,25 +287,41 @@ func _build_ui() -> void:
 
 
 func _populate_report() -> void:
-	var my_info: Dictionary = TelemetryService.cached_leaderboard.get("my_info", {}) as Dictionary
-	var found: bool = bool(my_info.get("found", false)) and int(my_info.get("overall_rank", 0)) > 0
-	if found:
-		_rank_lbl.text = "Kamu rank %d dari %d Peserta (%s: #%d/%d)" % [
-			int(my_info.get("overall_rank", 0)),
-			int(my_info.get("overall_total", 0)),
-			GameSession.kelas,
-			int(my_info.get("class_rank", 0)),
-			int(my_info.get("class_total", 0))
-		]
-	else:
-		_rank_lbl.text = "Kamu rank - dari - Peserta"
+	var mode_lbl: String = GameConfig.get_mode_label(GameSession.test_mode)
+	var revealed: bool = GameConfig.is_results_revealed_for(GameSession.test_mode)
+	if _hdr_lbl != null:
+		var is_comp_now: bool = get_viewport() != null and AdaptiveLayout.is_compact(get_viewport().get_visible_rect().size)
+		if is_comp_now:
+			_hdr_lbl.text = "RAPOR POST" if GameSession.test_mode == "POSTTEST" else "RAPOR PRE"
+		else:
+			_hdr_lbl.text = "RAPOR %s" % mode_lbl
+	if _csv_btn != null:
+		_csv_btn.visible = revealed
 
 	var avg_val: float = float(GameSession.get_total_score()) / 5.0
 	var done_cnt: int = GameSession.get_completed_minigame_count()
+
+	if revealed:
+		var my_info: Dictionary = TelemetryService.cached_leaderboard.get("my_info", {}) as Dictionary
+		var found: bool = bool(my_info.get("found", false)) and int(my_info.get("overall_rank", 0)) > 0
+		if found:
+			_rank_lbl.text = "Kamu rank %d dari %d Peserta (%s: #%d/%d)" % [
+				int(my_info.get("overall_rank", 0)),
+				int(my_info.get("overall_total", 0)),
+				GameSession.kelas,
+				int(my_info.get("class_rank", 0)),
+				int(my_info.get("class_total", 0))
+			]
+		else:
+			_rank_lbl.text = "Kamu rank - dari - Peserta"
+	else:
+		_rank_lbl.text = "HASIL %s MENUNGGU DIBUKA ADMIN" % mode_lbl
+
 	_summary_lbl.text = (
-		"Nama: %s | Kelas: %s | Absen: %s\n"
+		"Mode: %s | Nama: %s | Kelas: %s | Absen: %s\n"
 		+ "Progres: %d/5 Stage | Durasi: %d detik"
 	) % [
+		mode_lbl,
 		GameSession.nama if not GameSession.nama.is_empty() else "-",
 		GameSession.kelas if not GameSession.kelas.is_empty() else "-",
 		GameSession.absen if not GameSession.absen.is_empty() else "-",
@@ -293,15 +330,32 @@ func _populate_report() -> void:
 	]
 	_refresh_sync_line()
 
-	_avg_score_lbl.text = "%.1f" % avg_val
 	for ch: Node in _avg_stars_slot.get_children():
+		_avg_stars_slot.remove_child(ch)
 		ch.queue_free()
-	_avg_stars_slot.add_child(UiTheme.make_star_row(int(roundf(avg_val)), done_cnt > 0, 24))
+
+	if revealed:
+		if _avg_cap_lbl != null:
+			_avg_cap_lbl.text = "RATA-RATA"
+		_avg_score_lbl.text = "%.1f" % avg_val
+		_avg_score_lbl.add_theme_font_size_override("font_size", 24)
+		_avg_score_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS)
+		_avg_stars_slot.add_child(UiTheme.make_star_row(int(roundf(avg_val)), done_cnt > 0, 24))
+	else:
+		if _avg_cap_lbl != null:
+			_avg_cap_lbl.text = "STATUS NILAI"
+		_avg_score_lbl.text = "TERKUNCI"
+		_avg_score_lbl.add_theme_font_size_override("font_size", 18)
+		_avg_score_lbl.add_theme_color_override("font_color", UiTheme.COL_GOLD_BRIGHT)
+		_avg_stars_slot.add_child(UiTheme.make_icon_rect("lock", 24))
 
 	for ch: Node in _scores_box.get_children():
+		_scores_box.remove_child(ch)
 		ch.queue_free()
 	var sh := Label.new()
-	sh.text = "REKAP SKOR STAGE 1 - 5"
+	sh.text = "REKAP SKOR STAGE 1 - 5" if revealed else "STATUS PENGERJAAN STAGE 1 - 5"
+	sh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sh.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	UiTheme.style_parchment_heading(sh, 16, UiTheme.COL_INK_ACCENT)
 	_scores_box.add_child(sh)
 
@@ -309,6 +363,8 @@ func _populate_report() -> void:
 		var mg_id: String = str(meta.get("id", ""))
 		var done: bool = bool(GameSession.mg_completed.get(mg_id, false))
 		var sc: int = int(GameSession.mg_scores.get(mg_id, 0))
+		var lv_done: int = int(GameSession.mg_levels_done.get(mg_id, 0))
+		var lv_tot: int = LevelsCatalog.get_levels(mg_id).size()
 
 		var row_card := PanelContainer.new()
 		row_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -329,22 +385,46 @@ func _populate_report() -> void:
 		name_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
 		hb.add_child(name_lbl)
 
-		hb.add_child(UiTheme.make_star_row(sc, done, 20))
+		if revealed:
+			hb.add_child(UiTheme.make_star_row(sc, done, 20))
 
 		var sc_lbl := Label.new()
-		sc_lbl.text = "%d/100" % sc
-		sc_lbl.custom_minimum_size = Vector2(68.0, 0.0)
+		if revealed:
+			sc_lbl.text = "%d/100" % sc
+			sc_lbl.custom_minimum_size = Vector2(68.0, 0.0)
+		else:
+			sc_lbl.text = "[SELESAI]" if done else ("[%d/%d]" % [lv_done, lv_tot] if lv_done > 0 else "[BELUM]")
+			sc_lbl.custom_minimum_size = Vector2(92.0, 0.0)
 		sc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		sc_lbl.add_theme_font_override("font", UiTheme.make_mono_font())
 		sc_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS if done else UiTheme.COL_TEXT_SECONDARY)
 		hb.add_child(sc_lbl)
 
 	for ch: Node in _logs_box.get_children():
+		_logs_box.remove_child(ch)
 		ch.queue_free()
 	var lh := Label.new()
-	lh.text = "LOG JAWABAN DETAIL"
+	lh.text = "LOG JAWABAN DETAIL" if revealed else "STATUS PENGUMPULAN JAWABAN"
+	lh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lh.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	UiTheme.style_parchment_heading(lh, 16, UiTheme.COL_INK_ACCENT)
 	_logs_box.add_child(lh)
+
+	if not revealed:
+		var lock_panel := PanelContainer.new()
+		UiTheme.style_monitor_panel(lock_panel, 14.0)
+		_logs_box.add_child(lock_panel)
+
+		var lock_lbl := Label.new()
+		lock_lbl.text = (
+			"%d jawaban %s kamu sudah terekam dan tersimpan otomatis ke Google Sheets.\n"
+			+ "Nilai akhir, kunci jawaban, pembahasan, serta peringkat masih disembunyikan. "
+			+ "Tekan tombol CEK STATUS HASIL setelah Admin membuka (Spill) hasil."
+		) % [GameSession.attempt_logs.size(), mode_lbl]
+		lock_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lock_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+		lock_panel.add_child(lock_lbl)
+		return
 
 	if GameSession.attempt_logs.is_empty():
 		var empty_panel := PanelContainer.new()
@@ -407,8 +487,14 @@ func _refresh_sync_line() -> void:
 		_sync_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
 	if is_instance_valid(_retry_sync_btn):
 		var sending_now: bool = (TelemetryService.current_state == TelemetryService.SyncState.SENDING)
+		var revealed: bool = GameConfig.is_results_revealed_for(GameSession.test_mode)
 		_retry_sync_btn.disabled = sending_now
-		_retry_sync_btn.text = "MENGIRIM..." if sending_now else "SINKRON SHEETS"
+		if sending_now:
+			_retry_sync_btn.text = "MENGIRIM..."
+		elif revealed:
+			_retry_sync_btn.text = "SINKRON SHEETS"
+		else:
+			_retry_sync_btn.text = "CEK STATUS HASIL"
 
 
 func _refresh_sfx_icon() -> void:
@@ -422,10 +508,16 @@ func _on_mute_changed(_is_muted: bool) -> void:
 
 func _on_retry_sync() -> void:
 	AudioManager.play_click()
+	TelemetryService.fetch_remote_exam_config()
 	TelemetryService.sync_session_now(true)
 	if not GameConfig.has_valid_apps_script_url():
 		var kind: String = "err" if GameConfig.is_spreadsheet_edit_url() else "info"
 		_show_action_message(TelemetryService.last_message, kind)
+
+
+func _on_exam_config_updated() -> void:
+	if is_inside_tree():
+		_populate_report()
 
 
 func _on_export_csv() -> void:
@@ -482,3 +574,9 @@ func _on_resized() -> void:
 	if _new_btn != null:
 		_new_btn.text = "BARU" if is_comp else "SISWA BARU"
 		_new_btn.custom_minimum_size = Vector2(72.0 if is_comp else 112.0, UiTheme.MIN_TAP_HEIGHT)
+	if _hdr_lbl != null:
+		_hdr_lbl.add_theme_font_size_override("font_size", 14 if is_comp else 16)
+		if is_comp:
+			_hdr_lbl.text = "RAPOR POST" if GameSession.test_mode == "POSTTEST" else "RAPOR PRE"
+		else:
+			_hdr_lbl.text = "RAPOR %s" % GameConfig.get_mode_label(GameSession.test_mode)

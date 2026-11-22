@@ -111,14 +111,26 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":267900,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":356640,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
-const engine = new Engine(GODOT_CONFIG);
 
 (function () {
 	const statusOverlay = document.getElementById('status');
 	const statusProgress = document.getElementById('status-progress');
 	const statusNotice = document.getElementById('status-notice');
+
+	const pckUrl = 'index.pck?v=' + (GODOT_CONFIG.fileSizes['index.pck'] || Date.now());
+	GODOT_CONFIG.fileSizes[pckUrl] = GODOT_CONFIG.fileSizes['index.pck'];
+	GODOT_CONFIG.onProgress = function (current, total) {
+		if (current > 0 && total > 0) {
+			statusProgress.value = current;
+			statusProgress.max = total;
+		} else {
+			statusProgress.removeAttribute('value');
+			statusProgress.removeAttribute('max');
+		}
+	};
+	const engine = new Engine(GODOT_CONFIG);
 
 	let initializing = true;
 	let statusMode = '';
@@ -199,17 +211,12 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	} else {
 		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
+		Promise.all([
+			engine.init(GODOT_CONFIG.executable),
+			engine.preloadFile(pckUrl, 'index.pck'),
+		]).then(() => engine.start({
+			'args': ['--main-pack', 'index.pck'],
+		})).then(() => {
 			setStatusMode('hidden');
 		}, displayFailureNotice);
 	}

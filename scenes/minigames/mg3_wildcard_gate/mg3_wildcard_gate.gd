@@ -84,7 +84,10 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_deny_vbox.add_theme_constant_override("separation", 4)
 	deny_col.add_child(_deny_vbox)
 
-	# Panel Rakit Pola Wildcard
+
+func _setup_input(parent: VBoxContainer) -> void:
+	# Panel Rakit Pola Wildcard (INPUT di bawah, bisa disematkan)
+	var mono := UiTheme.make_mono_font()
 	var input_card := PanelContainer.new()
 	input_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_rpg_panel(input_card, 14.0)
@@ -120,7 +123,10 @@ func _setup_content(parent: VBoxContainer) -> void:
 
 	# Label kosong diletakkan di luar FlowContainer agar TIDAK membungkus vertikal per karakter!
 	_empty_pattern_lbl = Label.new()
-	_empty_pattern_lbl.text = "Tap ubin di bawah untuk menyusun pola wildcard. Tap ubin terpasang untuk menghapus."
+	if GameConfig.exam_blind_mode:
+		_empty_pattern_lbl.text = "Cara main: Tap ubin di bawah untuk menyusun pola wildcard yang meloloskan semua file [ALLOW] dan menolak semua [DENY], lalu tekan KIRIM JAWABAN."
+	else:
+		_empty_pattern_lbl.text = "Cara main: Tap ubin di bawah hingga SEMUA file [ALLOW] berstatus [COCOK] dan SEMUA [DENY] berstatus [AMAN]. Tap ubin terpasang untuk menghapus."
 	_empty_pattern_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_empty_pattern_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_empty_pattern_lbl.add_theme_font_size_override("font_size", 14)
@@ -162,8 +168,8 @@ func _load_level(level: Dictionary) -> void:
 	var mono := UiTheme.make_mono_font()
 	var tokens: Variant = level.get("tokens", [])
 	if tokens is Array:
-		for tok: Variant in tokens as Array:
-			var t_str: String = str(tok)
+		var shuffled_toks: Array[String] = LevelsCatalog.shuffled_choices(tokens as Array)
+		for t_str: String in shuffled_toks:
 			var btn := Button.new()
 			btn.text = t_str
 			btn.add_theme_font_override("font", mono)
@@ -176,7 +182,9 @@ func _load_level(level: Dictionary) -> void:
 
 
 func _on_token_tap(tok_str: String) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_place()
 	if _assembled_tokens.size() >= 10:
 		return
 	_assembled_tokens.append(tok_str)
@@ -184,7 +192,9 @@ func _on_token_tap(tok_str: String) -> void:
 
 
 func _on_remove_assembled(idx: int) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_remove()
 	if idx >= 0 and idx < _assembled_tokens.size():
 		_assembled_tokens.remove_at(idx)
 		_refresh_pattern_ui()
@@ -222,6 +232,7 @@ func _refresh_pattern_ui() -> void:
 			_assembled_flow.add_child(b)
 
 	_rebuild_files_lists(pattern)
+	refresh_pinned_layout()
 
 
 func _rebuild_files_lists(pattern: String) -> void:
@@ -233,21 +244,29 @@ func _rebuild_files_lists(pattern: String) -> void:
 	var allow_arr: Array = _current_level.get("allow_files", []) as Array
 	var deny_arr: Array = _current_level.get("deny_files", []) as Array
 	var has_pat: bool = not pattern.is_empty()
+	var show_live_eval: bool = has_pat and not GameConfig.exam_blind_mode
 
 	var eval: Dictionary = WildcardMatcher.evaluate_filter(pattern, allow_arr, deny_arr)
 	var mono := UiTheme.make_mono_font()
 
 	for f: Variant in allow_arr:
 		var fname: String = str(f)
-		var matched: bool = has_pat and WildcardMatcher.matches(pattern, fname)
-		_allow_vbox.add_child(_make_file_badge(fname, true, has_pat, matched, mono))
+		var matched: bool = show_live_eval and WildcardMatcher.matches(pattern, fname)
+		_allow_vbox.add_child(_make_file_badge(fname, true, show_live_eval, matched, mono))
 
 	for f: Variant in deny_arr:
 		var fname: String = str(f)
-		var matched: bool = has_pat and WildcardMatcher.matches(pattern, fname)
-		_deny_vbox.add_child(_make_file_badge(fname, false, has_pat, matched, mono))
+		var matched: bool = show_live_eval and WildcardMatcher.matches(pattern, fname)
+		_deny_vbox.add_child(_make_file_badge(fname, false, show_live_eval, matched, mono))
 
-	if not has_pat:
+	if GameConfig.exam_blind_mode:
+		if not has_pat:
+			_preview_status_lbl.text = "Susun pola wildcard dari ubin di bawah."
+			_preview_status_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+		else:
+			_preview_status_lbl.text = "Pola siap dikirim. Tekan KIRIM JAWABAN jika sudah yakin."
+			_preview_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+	elif not has_pat:
 		_preview_status_lbl.text = "Live Filter: belum ada pola terpasang."
 		_preview_status_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
 	elif bool(eval.get("perfect", false)):
@@ -318,6 +337,13 @@ func _on_submit_pressed() -> void:
 	var allow_arr: Array = _current_level.get("allow_files", []) as Array
 	var deny_arr: Array = _current_level.get("deny_files", []) as Array
 	var eval: Dictionary = WildcardMatcher.evaluate_filter(pattern, allow_arr, deny_arr)
+
+	if GameConfig.exam_blind_mode:
+		if pattern.is_empty():
+			show_info_feedback("Susun minimal 1 ubin pola wildcard terlebih dahulu.")
+			return
+		submit_attempt(pattern, ans_pattern, bool(eval.get("perfect", false)), "")
+		return
 
 	if bool(eval.get("perfect", false)):
 		submit_attempt(pattern, ans_pattern, true, "Pola '%s' menyaring tepat seluruh berkas [ALLOW]!" % pattern)

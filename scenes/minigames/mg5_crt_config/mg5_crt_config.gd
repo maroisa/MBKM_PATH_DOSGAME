@@ -66,7 +66,7 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_live_card.add_child(l_v)
 
 	var l_head := Label.new()
-	l_head.text = "LIVE PREVIEW OUTPUT"
+	l_head.text = "RANGKAIAN PERINTAH KAMU" if GameConfig.exam_blind_mode else "LIVE PREVIEW OUTPUT"
 	UiTheme.style_pixel_heading(l_head, 16, UiTheme.COL_INFO)
 	l_v.add_child(l_head)
 
@@ -77,7 +77,10 @@ func _setup_content(parent: VBoxContainer) -> void:
 	_live_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_PRIMARY)
 	l_v.add_child(_live_lbl)
 
-	# Rakit Token (Panel RPG)
+
+func _setup_input(parent: VBoxContainer) -> void:
+	# Rakit Token (INPUT di bawah, bisa disematkan)
+	var mono := UiTheme.make_mono_font()
 	var build_card := PanelContainer.new()
 	build_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_rpg_panel(build_card, 14.0)
@@ -102,13 +105,17 @@ func _setup_content(parent: VBoxContainer) -> void:
 
 	_match_lbl = Label.new()
 	_match_lbl.text = "[BELUM COCOK]"
+	_match_lbl.visible = not GameConfig.exam_blind_mode
 	_match_lbl.add_theme_font_override("font", mono)
 	_match_lbl.add_theme_font_size_override("font_size", 14)
 	_match_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SECONDARY)
 	b_top.add_child(_match_lbl)
 
 	_empty_tokens_lbl = Label.new()
-	_empty_tokens_lbl.text = "Belum ada token dipasang. Tap token di bawah untuk menyusun perintah."
+	if GameConfig.exam_blind_mode:
+		_empty_tokens_lbl.text = "Cara main: Tap token di bawah secara berurutan agar menghasilkan TARGET OUTPUT LAYAR di atas, lalu tekan KIRIM JAWABAN."
+	else:
+		_empty_tokens_lbl.text = "Cara main: Tap token di bawah secara berurutan hingga LIVE PREVIEW OUTPUT sama persis dengan TARGET OUTPUT LAYAR, lalu tekan CEK JAWABAN."
 	_empty_tokens_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_empty_tokens_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_empty_tokens_lbl.add_theme_font_size_override("font_size", 14)
@@ -153,8 +160,12 @@ func _load_level(level: Dictionary) -> void:
 		ch.queue_free()
 
 	var mono := UiTheme.make_mono_font()
-	for tok: Variant in level.get("tokens", []) as Array:
-		var t_str: String = str(tok)
+	var ans_toks: Variant = level.get("answer_tokens", [])
+	var shuffled_toks: Array[String] = LevelsCatalog.shuffled_choices(
+		level.get("tokens", []) as Array,
+		ans_toks as Array if ans_toks is Array else []
+	)
+	for t_str: String in shuffled_toks:
 		var btn := Button.new()
 		btn.text = t_str
 		btn.add_theme_font_override("font", mono)
@@ -167,7 +178,9 @@ func _load_level(level: Dictionary) -> void:
 
 
 func _on_token_tap(tok_str: String) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_place()
 	if _selected_tokens.has(tok_str) or _selected_tokens.size() >= 8:
 		return
 	_selected_tokens.append(tok_str)
@@ -175,7 +188,9 @@ func _on_token_tap(tok_str: String) -> void:
 
 
 func _on_remove_token(idx: int) -> void:
-	AudioManager.play_click()
+	if _level_solved:
+		return
+	AudioManager.play_block_remove()
 	if idx >= 0 and idx < _selected_tokens.size():
 		_selected_tokens.remove_at(idx)
 		_refresh_live_preview()
@@ -199,6 +214,20 @@ func _refresh_live_preview() -> void:
 			b.pressed.connect(_on_remove_token.bind(i))
 			_assembled_flow.add_child(b)
 
+	if GameConfig.exam_blind_mode:
+		_match_lbl.visible = false
+		if is_empty:
+			_live_lbl.text = "(Belum ada token perintah yang dipilih)"
+		else:
+			var mode_now: String = str(_current_level.get("mode", "dir_flags"))
+			if mode_now == "batch" or mode_now == "screen_info":
+				_live_lbl.text = "\n".join(_selected_tokens)
+			else:
+				_live_lbl.text = "C:\\> " + " ".join(_selected_tokens)
+		refresh_pinned_layout()
+		return
+
+	_match_lbl.visible = true
 	var lines: PackedStringArray = simulate_crt_output(_current_level, _selected_tokens)
 	_live_lbl.text = "\n".join(lines)
 
@@ -208,6 +237,7 @@ func _refresh_live_preview() -> void:
 	var is_match: bool = (lines == expected_lines)
 	_match_lbl.text = "[COCOK]" if is_match else "[BELUM COCOK]"
 	_match_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SUCCESS if is_match else UiTheme.COL_INK_SECONDARY)
+	refresh_pinned_layout()
 
 
 static func simulate_crt_output(level: Dictionary, chosen: Array[String]) -> PackedStringArray:
@@ -244,17 +274,17 @@ static func simulate_crt_output(level: Dictionary, chosen: Array[String]) -> Pac
 
 	if mode == "screen_info":
 		if not chosen.has("CLS"):
-			out.append("C:\\> [ERR] LOG SAMPAH LAMA MASIH MEMENUHI LAYAR...")
+			out.append("C:\\> [ERR] CATATAN LAMA MASIH MEMENUHI LAYAR...")
 			out.append("C:\\> [ERR] BUFFER PENUH - BERSIHKAN LAYAR DULU!")
 		for tok: String in chosen:
 			match tok:
 				"VER":
 					out.append("Microsoft Windows [Version 10.0.22631]")
 				"VOL":
-					out.append("Volume in drive D is DATA_SMK")
+					out.append("Volume in drive D is LAB_PPLG")
 					out.append("Volume Serial Number is 4A2C-99F1")
 				"DATE":
-					out.append("The current date is: Sat 11/21/2026")
+					out.append("The current date is: Sun 11/22/2026")
 				"TIME":
 					out.append("The current time is: 14:30:00.00")
 				"DIR":
@@ -267,7 +297,7 @@ static func simulate_crt_output(level: Dictionary, chosen: Array[String]) -> Pac
 		if chosen.is_empty() or chosen[0] != "PROMPT":
 			out.append("(Mulai dengan blok PROMPT terlebih dahulu)")
 			return out
-		var base_p: String = str(level.get("base_path", "D:\\TUGAS"))
+		var base_p: String = str(level.get("base_path", "D:\\PRAKTIK"))
 		var rendered: String = ""
 		for i: int in range(1, chosen.size()):
 			var t: String = chosen[i]
@@ -283,7 +313,7 @@ static func simulate_crt_output(level: Dictionary, chosen: Array[String]) -> Pac
 				"$T":
 					rendered += "14:30:00"
 				"$D":
-					rendered += "11/21/2026"
+					rendered += "11/22/2026"
 				"$V":
 					rendered += "Windows 10"
 				"$$":
@@ -315,7 +345,7 @@ static func simulate_crt_output(level: Dictionary, chosen: Array[String]) -> Pac
 			elif tok == "PAUSE":
 				out.append("Press any key to continue . . .")
 			elif tok == "DATE":
-				out.append("The current date is: Sat 11/21/2026")
+				out.append("The current date is: Sun 11/22/2026")
 			elif tok == "TIME":
 				out.append("The current time is: 14:30:00.00")
 		return out
@@ -339,6 +369,13 @@ func _on_submit_pressed() -> void:
 
 	var matches_output: bool = (live_lines == expected_lines)
 	var matches_tokens: bool = (_selected_tokens == ans_arr)
+	if GameConfig.exam_blind_mode:
+		if _selected_tokens.is_empty():
+			show_info_feedback("Pilih minimal 1 token perintah terlebih dahulu sebelum mengirim.")
+			return
+		submit_attempt(user_joined, key_joined, matches_output or matches_tokens, "")
+		return
+
 	if matches_output or matches_tokens:
 		submit_attempt(user_joined, key_joined, true, "Tampilan layar terminal 100% cocok dengan target!")
 	else:

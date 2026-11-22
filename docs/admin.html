@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DOS Rescue — Dashboard Admin (Pre-Test &amp; Post-Test)</title>
+  <style>
+    :root {
+      --bg: #141220;
+      --bg-card: #1d2136;
+      --bg-well: #101423;
+      --bg-hover: #262c47;
+      --border: #3a4466;
+      --border-hi: #5a6988;
+      --gold: #feae34;
+      --gold-bright: #fee761;
+      --green: #63c74d;
+      --green-bg: rgba(99, 199, 77, 0.14);
+      --cyan: #5fcde4;
+      --cyan-bg: rgba(95, 205, 228, 0.14);
+      --red: #e43b44;
+      --red-bg: rgba(228, 59, 68, 0.16);
+      --amber-bg: rgba(254, 174, 52, 0.15);
+      --text: #f4f7fb;
+      --text-dim: #a8b5ce;
+      --text-muted: #7684a3;
+      --radius: 10px;
+      --mono: "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      background-image:
+        radial-gradient(circle at 15% 0%, rgba(254, 174, 52, 0.08), transparent 40%),
+        radial-gradient(circle at 85% 10%, rgba(95, 205, 228, 0.08), transparent 42%);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .container {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 18px 16px 48px;
+    }
+
+    /* Login Gate */
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-card);
+      border: 2px solid var(--gold);
+      border-radius: 14px;
+      padding: 28px 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    }
+    .brand-tag {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      color: var(--gold-bright);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .login-card h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      color: var(--text);
+    }
+    .login-card p {
+      margin: 0 0 18px;
+      color: var(--text-dim);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .input {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: var(--bg-well);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .input:focus {
+      border-color: var(--gold);
+    }
+    .input-mono {
+      font-family: var(--mono);
+      letter-spacing: 2px;
+      font-size: 16px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 42px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 2px solid var(--border-hi);
+      background: #2b3556;
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.08s, background 0.15s, border-color 0.15s;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) {
+      background: #36436d;
+      border-color: var(--gold);
+    }
+    .btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .btn-gold {
+      background: linear-gradient(180deg, #feae34, #d98218);
+      border-color: var(--gold-bright);
+      color: #181425;
+    }
+    .btn-gold:hover:not(:disabled) {
+      background: linear-gradient(180deg, #ffc357, #e59322);
+      border-color: #fff;
+    }
+    .btn-green {
+      background: linear-gradient(180deg, #49a843, #337e32);
+      border-color: var(--green);
+      color: #fff;
+    }
+    .btn-green:hover:not(:disabled) {
+      background: linear-gradient(180deg, #56bf4f, #3b913a);
+    }
+    .btn-danger {
+      background: #4d1b28;
+      border-color: var(--red);
+      color: #ffd6da;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: #6c2335;
+      border-color: #ff6b78;
+    }
+    .btn-sm {
+      min-height: 32px;
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
+    .alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      margin: 12px 0;
+      border: 1px solid var(--border);
+      background: var(--bg-well);
+    }
+    .alert-err {
+      border-color: var(--red);
+      background: var(--red-bg);
+      color: #ffd1d6;
+    }
+    .alert-ok {
+      border-color: var(--green);
+      background: var(--green-bg);
+      color: #d7f8d0;
+    }
+    .alert-warn {
+      border-color: var(--gold);
+      background: var(--amber-bg);
+      color: #ffefc2;
+    }
+
+    /* Top Header */
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-bottom: 3px solid var(--gold);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+    }
+    .topbar-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .topbar-title-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 20px;
+      font-family: var(--mono);
+      color: var(--gold-bright);
+    }
+    .topbar-meta {
+      font-size: 12.5px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+    }
+    .topbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+    .pill-pre {
+      background: var(--amber-bg);
+      color: var(--gold-bright);
+      border-color: var(--gold);
+    }
+    .pill-post {
+      background: var(--green-bg);
+      color: #9bf28b;
+      border-color: var(--green);
+    }
+    .pill-ok {
+      background: var(--green-bg);
+      color: #9bf28b;
+      border-color: var(--green);
+    }
+    .pill-err {
+      background: var(--red-bg);
+      color: #ff9ba3;
+      border-color: var(--red);
+    }
+    .pill-muted {
+      background: rgba(168, 181, 206, 0.1);
+      color: var(--text-dim);
+      border-color: var(--border);
+    }
+
+    /* Control Deck */
+    .control-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 1.15fr) minmax(280px, 1.35fr) minmax(240px, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 980px) {
+      .control-grid { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .panel-title {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.8px;
+      color: var(--gold-bright);
+      text-transform: uppercase;
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .mode-btn {
+      padding: 14px 12px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: var(--bg-well);
+      color: var(--text-dim);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .mode-btn strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 15px;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .mode-btn span {
+      display: block;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .mode-btn.active-pre {
+      border-color: var(--gold-bright);
+      background: var(--amber-bg);
+      box-shadow: 0 0 0 2px rgba(254, 174, 52, 0.2);
+    }
+    .mode-btn.active-pre strong { color: var(--gold-bright); }
+    .mode-btn.active-post {
+      border-color: var(--green);
+      background: var(--green-bg);
+      box-shadow: 0 0 0 2px rgba(99, 199, 77, 0.2);
+    }
+    .mode-btn.active-post strong { color: #9bf28b; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--bg-well);
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .toggle-row:last-child { margin-bottom: 0; }
+    .toggle-info strong {
+      display: block;
+      font-size: 13.5px;
+      color: var(--text);
+    }
+    .toggle-info small {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* KPI Strip */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 960px) {
+      .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .kpi-val {
+      font-family: var(--mono);
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 5px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .tab-btn {
+      padding: 10px 16px;
+      border-radius: 9px;
+      border: 2px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-dim);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      border-color: var(--gold-bright);
+      background: #2b3455;
+      color: var(--gold-bright);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .toolbar .input {
+      width: auto;
+      min-width: 220px;
+      flex: 1 1 220px;
+      min-height: 40px;
+      padding: 8px 12px;
+    }
+    .toolbar select.input {
+      flex: 0 1 180px;
+      min-width: 150px;
+    }
+
+    /* Tables */
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-well);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 780px;
+      font-size: 13.5px;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(90, 105, 136, 0.25);
+      vertical-align: middle;
+    }
+    th {
+      background: #1a2035;
+      color: var(--gold-bright);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    tr:hover td {
+      background: rgba(95, 205, 228, 0.05);
+    }
+    .mono { font-family: var(--mono); }
+    .score-mini {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    .gain-pos { color: var(--green); font-weight: 800; font-family: var(--mono); }
+    .gain-neg { color: var(--red); font-weight: 800; font-family: var(--mono); }
+    .gain-zero { color: var(--text-dim); font-family: var(--mono); }
+
+    /* Podium for Spill / Projector */
+    .podium-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+      align-items: end;
+    }
+    @media (max-width: 720px) {
+      .podium-grid { grid-template-columns: 1fr; }
+    }
+    .podium-card {
+      background: var(--bg-well);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 14px;
+      text-align: center;
+    }
+    .podium-card.rank-1 {
+      border-color: var(--gold-bright);
+      background: linear-gradient(180deg, rgba(254, 174, 52, 0.18), rgba(16, 20, 35, 0.95));
+      padding-top: 24px;
+    }
+    .podium-card.rank-2 {
+      border-color: var(--cyan);
+      background: linear-gradient(180deg, rgba(95, 205, 228, 0.13), rgba(16, 20, 35, 0.95));
+    }
+    .podium-card.rank-3 {
+      border-color: #d98245;
+      background: linear-gradient(180deg, rgba(217, 130, 69, 0.13), rgba(16, 20, 35, 0.95));
+    }
+    .podium-rank {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      color: var(--gold-bright);
+    }
+    .podium-name {
+      font-size: 17px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .podium-meta {
+      font-size: 12.5px;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    .podium-score {
+      font-family: var(--mono);
+      font-size: 30px;
+      font-weight: 900;
+      color: var(--green);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 999;
+      max-width: 420px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #232a45;
+      border: 2px solid var(--gold);
+      color: var(--text);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      font-size: 13.5px;
+      display: none;
+    }
+    .toast.show { display: block; }
+    .toast.err { border-color: var(--red); background: #3e1722; }
+    .toast.ok { border-color: var(--green); background: #193821; }
+
+    /* Modal */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 10, 18, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 900;
+      padding: 16px;
+    }
+    .modal-bg.show { display: flex; }
+    .modal-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg-card);
+      border: 2px solid var(--gold);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .hidden { display: none !important; }
+    .row-gap { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    details summary {
+      cursor: pointer;
+      color: var(--text-dim);
+      font-size: 12.5px;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <!-- LOGIN GATE -->
+  <div id="loginView" class="login-wrap">
+    <div class="login-card">
+      <div class="brand-tag">DOS Rescue &bull; Kontrol Guru / Admin</div>
+      <h1>Dashboard Admin</h1>
+      <p>Pantau nilai Pre-Test &amp; Post-Test secara live dari Google Sheets, ubah mode ujian aktif, dan kontrol pembukaan (Spill) nilai &amp; peringkat siswa.</p>
+
+      <form id="loginForm">
+        <label class="field-label" for="pinInput">PIN Admin (Default: 2026)</label>
+        <input id="pinInput" class="input input-mono" type="password" inputmode="numeric" placeholder="Masukkan PIN..." autocomplete="current-password" required />
+
+        <details>
+          <summary>Pengaturan Lanjutan (URL Google Apps Script)</summary>
+          <div style="margin-top: 8px;">
+            <label class="field-label" for="scriptUrlInput">Web App URL (/exec)</label>
+            <input id="scriptUrlInput" class="input" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
+          </div>
+        </details>
+
+        <div id="loginError" class="alert alert-err hidden"></div>
+
+        <button id="loginBtn" type="submit" class="btn btn-gold" style="width: 100%; margin-top: 16px;">
+          MASUK DASHBOARD ADMIN
+        </button>
+      </form>
+
+      <div style="margin-top: 16px; text-align: center;">
+        <a href="./" style="color: var(--cyan); font-size: 13px; text-decoration: none;">&larr; Kembali ke Halaman Game Siswa</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN ADMIN DASHBOARD -->
+  <div id="appView" class="container hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-title-row">
+          <h1>DOS RESCUE // ADMIN</h1>
+          <span id="activeModeBadge" class="pill pill-pre">MODE: PRE-TEST</span>
+          <span id="spillBadge" class="pill pill-muted">SPILL: TERSEMBUNYI</span>
+        </div>
+        <div id="lastUpdateText" class="topbar-meta">Menghubungkan ke Google Sheets...</div>
+      </div>
+      <div class="topbar-actions">
+        <button id="btnRefresh" class="btn btn-gold" type="button">Refresh</button>
+        <button id="btnAutoRefresh" class="btn" type="button">Auto 10d: OFF</button>
+        <button id="btnSyncSheets" class="btn" type="button">Sinkron Sheet</button>
+        <button id="btnExportCsv" class="btn" type="button">Ekspor CSV</button>
+        <a id="linkSpreadsheet" class="btn" href="#" target="_blank" rel="noopener">Buka Sheets</a>
+        <button id="btnChangePin" class="btn" type="button">Ganti PIN</button>
+        <button id="btnLogout" class="btn btn-danger" type="button">Keluar</button>
+      </div>
+    </header>
+
+    <div id="legacyWarning" class="alert alert-warn hidden">
+      <strong>Perlu Update Apps Script (Code.gs):</strong> Deployment Web App Google Apps Script Anda masih versi lama sehingga endpoint Admin (<code>admin_dashboard</code>) belum aktif. Buka Google Sheets &rarr; <strong>Ekstensi &rarr; Apps Script</strong> &rarr; tempel isi terbaru <code>google_apps_script/Code.gs</code> &rarr; <strong>Deploy &rarr; Manage deployments &rarr; Edit &rarr; New version &rarr; Deploy</strong>.
+    </div>
+
+    <!-- CONTROL DECK -->
+    <section class="control-grid">
+      <div class="panel">
+        <div class="panel-title">
+          <span>1. Mode Ujian Aktif (Untuk Siswa)</span>
+        </div>
+        <div class="mode-switch">
+          <button id="btnModePre" class="mode-btn" type="button">
+            <strong>PRE-TEST</strong>
+            <span>Siswa masuk ke sheet <code>PreTest_PPLGA/B</code>.</span>
+          </button>
+          <button id="btnModePost" class="mode-btn" type="button">
+            <strong>POST-TEST</strong>
+            <span>Siswa masuk ke sheet <code>PostTest_PPLGA/B</code>.</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>2. Kontrol Spill Nilai &amp; Peringkat</span>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <strong>Spill Hasil PRE-TEST ke Siswa</strong>
+            <small>Jika OFF, nilai &amp; peringkat Pre-Test disembunyikan dari siswa.</small>
+          </div>
+          <button id="btnToggleSpillPre" class="btn btn-sm" type="button">TERSEMBUNYI</button>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <strong>Spill Hasil POST-TEST ke Siswa</strong>
+            <small>Jika ON, siswa dapat melihat skor, rapor &amp; papan peringkat Post-Test.</small>
+          </div>
+          <button id="btnToggleSpillPost" class="btn btn-sm" type="button">TERSEMBUNYI</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>3. Tombol Buku Materi</span>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <strong>Tombol MATERI (Pre-Test)</strong>
+            <small>Buka/tutup Buku Saku saat Pre-Test.</small>
+          </div>
+          <button id="btnToggleMateriPre" class="btn btn-sm" type="button">TERKUNCI</button>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <strong>Tombol MATERI (Post-Test)</strong>
+            <small>Buka/tutup Buku Saku saat Post-Test.</small>
+          </div>
+          <button id="btnToggleMateriPost" class="btn btn-sm" type="button">TERKUNCI</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI CARDS -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Peserta Pre-Test</div>
+        <div id="kpiPreCount" class="kpi-val">0</div>
+        <div id="kpiPreSub" class="kpi-sub">PPLG A: 0/36 &bull; PPLG B: 0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Peserta Post-Test</div>
+        <div id="kpiPostCount" class="kpi-val">0</div>
+        <div id="kpiPostSub" class="kpi-sub">PPLG A: 0/36 &bull; PPLG B: 0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Rata-Rata Pre-Test</div>
+        <div id="kpiPreAvg" class="kpi-val" style="color: var(--gold-bright);">0.0</div>
+        <div class="kpi-sub">Skala 0 &ndash; 100</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Rata-Rata Post-Test</div>
+        <div id="kpiPostAvg" class="kpi-val" style="color: var(--green);">0.0</div>
+        <div class="kpi-sub">Skala 0 &ndash; 100</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Rata-Rata Kenaikan (Gain)</div>
+        <div id="kpiGainAvg" class="kpi-val" style="color: var(--cyan);">+0.0</div>
+        <div id="kpiGainSub" class="kpi-sub">Dari 0 siswa lengkap Pre &amp; Post</div>
+      </div>
+    </section>
+
+    <!-- TABS -->
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="monitor" type="button">Pantauan Siswa (Pre vs Post)</button>
+      <button class="tab-btn" data-tab="leaderboard" type="button">Papan Peringkat (Mode Spill / Proyektor)</button>
+      <button class="tab-btn" data-tab="logs" type="button">Log Jawaban Detail</button>
+    </nav>
+
+    <!-- TAB 1: MONITOR -->
+    <section id="tab-monitor" class="panel">
+      <div class="toolbar">
+        <input id="monSearch" class="input" type="search" placeholder="Cari nama, nomor absen, atau NIS..." />
+        <select id="monClass" class="input">
+          <option value="ALL">Semua Kelas</option>
+          <option value="PPLG A">PPLG A (Roster 36)</option>
+          <option value="PPLG B">PPLG B</option>
+        </select>
+        <select id="monStatus" class="input">
+          <option value="ALL">Semua Status</option>
+          <option value="PRE_DONE">Sudah Pre-Test</option>
+          <option value="PRE_TODO">Belum Pre-Test</option>
+          <option value="POST_DONE">Sudah Post-Test</option>
+          <option value="POST_TODO">Belum Post-Test</option>
+          <option value="BOTH_DONE">Lengkap Pre &amp; Post</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 66px;">Absen</th>
+              <th>Nama Siswa</th>
+              <th style="width: 90px;">Kelas</th>
+              <th>Pre-Test (G1&ndash;G5 / Rata-rata)</th>
+              <th>Post-Test (G1&ndash;G5 / Rata-rata)</th>
+              <th style="width: 96px;">Gain</th>
+              <th style="width: 190px;">Reset (Buka Ulang)</th>
+            </tr>
+          </thead>
+          <tbody id="monitorTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 2: LEADERBOARD / SPILL PROJECTOR -->
+    <section id="tab-leaderboard" class="panel hidden">
+      <div class="toolbar">
+        <div class="row-gap" style="flex: 1;">
+          <button id="lbSubPre" class="btn btn-gold btn-sm" type="button">Peringkat PRE-TEST</button>
+          <button id="lbSubPost" class="btn btn-sm" type="button">Peringkat POST-TEST</button>
+          <button id="lbSubGain" class="btn btn-sm" type="button">Kenaikan (Gain) Tertinggi</button>
+        </div>
+        <select id="lbClassFilter" class="input">
+          <option value="ALL">Semua Kelas</option>
+          <option value="PPLG A">PPLG A</option>
+          <option value="PPLG B">PPLG B</option>
+        </select>
+        <button id="btnFullscreen" class="btn btn-sm" type="button">Layar Penuh Proyektor</button>
+      </div>
+
+      <div id="podiumContainer" class="podium-grid"></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 72px;">Rank</th>
+              <th>Nama Siswa</th>
+              <th style="width: 76px;">Absen</th>
+              <th style="width: 92px;">Kelas</th>
+              <th id="lbColDetail">Skor Stage (G1 &ndash; G5)</th>
+              <th id="lbColMain" style="width: 120px;">Rata-rata</th>
+            </tr>
+          </thead>
+          <tbody id="lbTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: LOGS -->
+    <section id="tab-logs" class="panel hidden">
+      <div class="toolbar">
+        <input id="logSearch" class="input" type="search" placeholder="Cari nama, level (mg1_l1), atau jawaban..." />
+        <select id="logMode" class="input">
+          <option value="ALL">Semua Mode</option>
+          <option value="PRETEST">PRE-TEST</option>
+          <option value="POSTTEST">POST-TEST</option>
+        </select>
+        <select id="logResult" class="input">
+          <option value="ALL">Semua Hasil</option>
+          <option value="BENAR">BENAR</option>
+          <option value="SALAH">SALAH</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 145px;">Waktu</th>
+              <th style="width: 95px;">Mode</th>
+              <th>Siswa</th>
+              <th style="width: 85px;">Level</th>
+              <th>Jawaban Siswa</th>
+              <th>Kunci Jawaban</th>
+              <th style="width: 86px;">Hasil</th>
+              <th style="width: 68px;">Poin</th>
+              <th style="width: 70px;">Durasi</th>
+            </tr>
+          </thead>
+          <tbody id="logsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODAL GANTI PIN -->
+  <div id="pinModal" class="modal-bg">
+    <div class="modal-card">
+      <h3 style="margin: 0 0 8px; color: var(--gold-bright);">Ganti PIN Admin</h3>
+      <p style="margin: 0 0 14px; font-size: 13px; color: var(--text-dim);">PIN disimpan di sheet <code>Config</code> (baris <code>admin_pin</code>). Minimal 4 karakter.</p>
+      <label class="field-label" for="newPinInput">PIN Baru</label>
+      <input id="newPinInput" class="input input-mono" type="password" minlength="4" placeholder="Minimal 4 angka/huruf" />
+      <div class="row-gap" style="margin-top: 16px; justify-content: flex-end;">
+        <button id="btnCancelPin" class="btn" type="button">Batal</button>
+        <button id="btnSavePin" class="btn btn-gold" type="button">Simpan PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    (function () {
+      const state = {
+        appsScriptUrl: "",
+        spreadsheetUrl: "",
+        pin: "",
+        rosterByClass: {},
+        dashboard: null,
+        activeTab: "monitor",
+        lbScope: "PRETEST",
+        autoRefresh: false,
+        autoTimer: null,
+        busy: false
+      };
+
+      const el = (id) => document.getElementById(id);
+
+      function showToast(msg, kind = "") {
+        const t = el("toast");
+        t.textContent = msg;
+        t.className = "toast show" + (kind ? " " + kind : "");
+        clearTimeout(t._tid);
+        t._tid = setTimeout(() => { t.className = "toast"; }, 4200);
+      }
+
+      function esc(str) {
+        return String(str == null ? "" : str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function normClass(k) {
+        const s = String(k || "").toUpperCase().replace(/\s+/g, "");
+        return s === "PPLGB" ? "PPLG B" : "PPLG A";
+      }
+
+      function fmtNum(v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n.toFixed(1) : "-";
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return "-";
+        try {
+          const d = new Date(iso);
+          return d.toLocaleString("id-ID", {
+            day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"
+          });
+        } catch (_e) {
+          return String(iso);
+        }
+      }
+
+      async function loadStaticFiles() {
+        const bust = "?v=" + Date.now();
+        try {
+          const cfgRes = await fetch("./game_config.json" + bust, { cache: "no-store" });
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json();
+            state.appsScriptUrl = (cfg.apps_script_url || "").trim();
+            state.spreadsheetUrl = (cfg.spreadsheet_url || "").trim();
+            el("scriptUrlInput").value = state.appsScriptUrl;
+            if (state.spreadsheetUrl) {
+              el("linkSpreadsheet").href = state.spreadsheetUrl;
+            }
+          }
+        } catch (_e) {}
+
+        try {
+          const rosRes = await fetch("./students_roster.json" + bust, { cache: "no-store" });
+          if (rosRes.ok) {
+            const ros = await rosRes.json();
+            state.rosterByClass = ros.classes || {};
+          }
+        } catch (_e) {}
+      }
+
+      async function apiGet(params) {
+        const base = state.appsScriptUrl;
+        if (!base) throw new Error("URL Google Apps Script belum diisi.");
+        const sep = base.includes("?") ? "&" : "?";
+        const qs = new URLSearchParams({ ...params, _t: String(Date.now()) }).toString();
+        const res = await fetch(base + sep + qs, { method: "GET", cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return await res.json();
+      }
+
+      async function apiPost(payload) {
+        const base = state.appsScriptUrl;
+        if (!base) throw new Error("URL Google Apps Script belum diisi.");
+        const res = await fetch(base, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return await res.json();
+      }
+
+      async function fetchDashboard(silent = false) {
+        if (state.busy) return false;
+        state.busy = true;
+        if (!silent) el("btnRefresh").disabled = true;
+        try {
+          const data = await apiGet({ action: "admin_dashboard", pin: state.pin });
+          if (data && data.unauthorized) {
+            throw new Error(data.error || "PIN Admin salah.");
+          }
+          if (!data || !data.ok) {
+            throw new Error((data && data.error) || "Respon Google Apps Script tidak valid.");
+          }
+          if (!data.pretest || !data.posttest || !data.config) {
+            el("legacyWarning").classList.remove("hidden");
+            state.dashboard = {
+              updated_at: data.updated_at || new Date().toISOString(),
+              config: {
+                active_mode: "PRETEST",
+                reveal_pretest_results: false,
+                reveal_posttest_results: false,
+                allow_materi_pretest: false,
+                allow_materi_posttest: false
+              },
+              pretest: { overall_list: data.overall_top10 || [], pplga_list: data.pplga_top10 || [], pplgb_list: data.pplgb_top10 || [] },
+              posttest: { overall_list: [], pplga_list: [], pplgb_list: [] },
+              comparison: [],
+              recent_logs: []
+            };
+          } else {
+            el("legacyWarning").classList.add("hidden");
+            state.dashboard = data;
+          }
+          renderAll();
+          if (!silent) showToast("Data berhasil diperbarui dari Google Sheets.", "ok");
+          return true;
+        } finally {
+          state.busy = false;
+          el("btnRefresh").disabled = false;
+        }
+      }
+
+      async function updateConfig(patch, okMsg) {
+        try {
+          showToast("Menyimpan pengaturan ke Google Sheets...");
+          const res = await apiPost({
+            event: "ADMIN_UPDATE_CONFIG",
+            pin: state.pin,
+            ...patch
+          });
+          if (!res || !res.ok) {
+            throw new Error((res && res.error) || "Gagal menyimpan pengaturan.");
+          }
+          if (patch.new_pin) {
+            state.pin = patch.new_pin;
+            sessionStorage.setItem("dos_admin_pin", state.pin);
+          }
+          await fetchDashboard(true);
+          showToast(okMsg || "Pengaturan berhasil diperbarui!", "ok");
+        } catch (err) {
+          showToast("Gagal: " + err.message, "err");
+        }
+      }
+
+      async function resetStudent(nama, absen, kelas, mode) {
+        const modeLabel = mode === "POSTTEST" ? "POST-TEST" : "PRE-TEST";
+        const ok = window.confirm(
+          "Reset data " + modeLabel + " untuk:\n" +
+          nama + " (" + kelas + ", Absen " + (absen || "-") + ")?\n\n" +
+          "Baris siswa akan dihapus dari sheet " + modeLabel + " agar siswa bisa mengerjakan ulang 1x lagi."
+        );
+        if (!ok) return;
+        try {
+          showToast("Mereset data " + nama + "...");
+          const res = await apiPost({
+            event: "ADMIN_RESET_STUDENT",
+            pin: state.pin,
+            nama,
+            absen: String(absen || ""),
+            kelas,
+            mode
+          });
+          if (!res || !res.ok) {
+            throw new Error((res && res.error) || "Gagal mereset data siswa.");
+          }
+          await fetchDashboard(true);
+          showToast(res.message || "Data berhasil direset.", "ok");
+        } catch (err) {
+          showToast("Gagal reset: " + err.message, "err");
+        }
+      }
+
+      function buildMergedStudents() {
+        const map = new Map();
+        const addOrGet = (kelas, nama, absen, nis) => {
+          const cls = normClass(kelas);
+          const key = cls + "|" + String(nama || "").trim().toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, {
+              kelas: cls,
+              nama: String(nama || "").trim(),
+              absen: absen ? String(absen).trim() : "",
+              nis: nis ? String(nis).trim() : "",
+              pre_done: false,
+              pre_avg: 0,
+              pre_scores: [0, 0, 0, 0, 0],
+              post_done: false,
+              post_avg: 0,
+              post_scores: [0, 0, 0, 0, 0],
+              gain: null
+            });
+          }
+          const rec = map.get(key);
+          if (!rec.absen && absen) rec.absen = String(absen).trim();
+          if (!rec.nis && nis) rec.nis = String(nis).trim();
+          return rec;
+        };
+
+        // 1. Seed seluruh siswa dari students_roster.json (termasuk yang belum mengerjakan)
+        Object.keys(state.rosterByClass || {}).forEach((clsKey) => {
+          const list = state.rosterByClass[clsKey] || [];
+          list.forEach((st) => addOrGet(clsKey, st.nama, st.absen, st.nis));
+        });
+
+        // 2. Gabungkan data live Pre-Test & Post-Test dari Google Sheets
+        const preList = (state.dashboard && state.dashboard.pretest && state.dashboard.pretest.overall_list) || [];
+        const postList = (state.dashboard && state.dashboard.posttest && state.dashboard.posttest.overall_list) || [];
+
+        preList.forEach((it) => {
+          const r = addOrGet(it.kelas, it.nama, it.absen, "");
+          r.pre_done = true;
+          r.pre_avg = Number(it.poin || 0);
+          r.pre_scores = Array.isArray(it.scores) ? it.scores : [0, 0, 0, 0, 0];
+        });
+        postList.forEach((it) => {
+          const r = addOrGet(it.kelas, it.nama, it.absen, "");
+          r.post_done = true;
+          r.post_avg = Number(it.poin || 0);
+          r.post_scores = Array.isArray(it.scores) ? it.scores : [0, 0, 0, 0, 0];
+        });
+
+        const arr = Array.from(map.values());
+        arr.forEach((r) => {
+          if (r.pre_done && r.post_done) {
+            r.gain = Math.round((r.post_avg - r.pre_avg) * 100) / 100;
+          }
+        });
+        arr.sort((a, b) => {
+          if (a.kelas !== b.kelas) return a.kelas.localeCompare(b.kelas);
+          const aa = Number(a.absen) || 999;
+          const ba = Number(b.absen) || 999;
+          if (aa !== ba) return aa - ba;
+          return a.nama.localeCompare(b.nama);
+        });
+        return arr;
+      }
+
+      function renderControlsAndKpis() {
+        const d = state.dashboard;
+        if (!d) return;
+        const cfg = d.config || {};
+        const isPost = cfg.active_mode === "POSTTEST";
+        const activeSpill = isPost ? !!cfg.reveal_posttest_results : !!cfg.reveal_pretest_results;
+
+        const badge = el("activeModeBadge");
+        badge.textContent = isPost ? "MODE AKTIF: POST-TEST" : "MODE AKTIF: PRE-TEST";
+        badge.className = "pill " + (isPost ? "pill-post" : "pill-pre");
+
+        const sBadge = el("spillBadge");
+        sBadge.textContent = activeSpill ? "NILAI AKTIF: DIBUKA (SPILL)" : "NILAI AKTIF: TERSEMBUNYI";
+        sBadge.className = "pill " + (activeSpill ? "pill-ok" : "pill-muted");
+
+        el("lastUpdateText").textContent = "Terakhir sinkron: " + fmtTime(d.updated_at);
+
+        el("btnModePre").className = "mode-btn" + (!isPost ? " active-pre" : "");
+        el("btnModePost").className = "mode-btn" + (isPost ? " active-post" : "");
+
+        const setToggleBtn = (btnId, on, labelOn, labelOff) => {
+          const b = el(btnId);
+          b.textContent = on ? labelOn : labelOff;
+          b.className = "btn btn-sm " + (on ? "btn-green" : "btn-danger");
+        };
+        setToggleBtn("btnToggleSpillPre", !!cfg.reveal_pretest_results, "DIBUKA / SPILL", "TERSEMBUNYI");
+        setToggleBtn("btnToggleSpillPost", !!cfg.reveal_posttest_results, "DIBUKA / SPILL", "TERSEMBUNYI");
+        setToggleBtn("btnToggleMateriPre", !!cfg.allow_materi_pretest, "DIIZINKAN", "TERKUNCI");
+        setToggleBtn("btnToggleMateriPost", !!cfg.allow_materi_posttest, "DIIZINKAN", "TERKUNCI");
+
+        const preAll = (d.pretest && d.pretest.overall_list) || [];
+        const preA = (d.pretest && d.pretest.pplga_list) || [];
+        const preB = (d.pretest && d.pretest.pplgb_list) || [];
+        const postAll = (d.posttest && d.posttest.overall_list) || [];
+        const postA = (d.posttest && d.posttest.pplga_list) || [];
+        const postB = (d.posttest && d.posttest.pplgb_list) || [];
+        const rosterACount = (state.rosterByClass["PPLG A"] || []).length || 36;
+
+        const avgOf = (list) => list.length ? (list.reduce((s, x) => s + Number(x.poin || 0), 0) / list.length) : 0;
+        const preAvg = avgOf(preAll);
+        const postAvg = avgOf(postAll);
+
+        const merged = buildMergedStudents();
+        const both = merged.filter((x) => x.pre_done && x.post_done);
+        const avgGain = both.length ? (both.reduce((s, x) => s + Number(x.gain || 0), 0) / both.length) : 0;
+
+        el("kpiPreCount").textContent = String(preAll.length);
+        el("kpiPreSub").textContent = "PPLG A: " + preA.length + "/" + rosterACount + " • PPLG B: " + preB.length;
+        el("kpiPostCount").textContent = String(postAll.length);
+        el("kpiPostSub").textContent = "PPLG A: " + postA.length + "/" + rosterACount + " • PPLG B: " + postB.length;
+        el("kpiPreAvg").textContent = preAvg.toFixed(1);
+        el("kpiPostAvg").textContent = postAvg.toFixed(1);
+        el("kpiGainAvg").textContent = (avgGain >= 0 ? "+" : "") + avgGain.toFixed(1);
+        el("kpiGainAvg").style.color = avgGain >= 0 ? "var(--cyan)" : "var(--red)";
+        el("kpiGainSub").textContent = "Dari " + both.length + " siswa lengkap Pre & Post";
+      }
+
+      function renderMonitorTable() {
+        const merged = buildMergedStudents();
+        const q = el("monSearch").value.trim().toLowerCase();
+        const clsFilter = el("monClass").value;
+        const stFilter = el("monStatus").value;
+
+        const filtered = merged.filter((r) => {
+          if (clsFilter !== "ALL" && r.kelas !== clsFilter) return false;
+          if (stFilter === "PRE_DONE" && !r.pre_done) return false;
+          if (stFilter === "PRE_TODO" && r.pre_done) return false;
+          if (stFilter === "POST_DONE" && !r.post_done) return false;
+          if (stFilter === "POST_TODO" && r.post_done) return false;
+          if (stFilter === "BOTH_DONE" && !(r.pre_done && r.post_done)) return false;
+          if (q) {
+            const hay = (r.nama + " " + r.absen + " " + r.nis + " " + r.kelas).toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+
+        const tbody = el("monitorTbody");
+        if (!filtered.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Tidak ada data siswa yang cocok dengan filter.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = filtered.map((r) => {
+          const preHtml = r.pre_done
+            ? '<div><span class="pill pill-pre">' + fmtNum(r.pre_avg) + '</span></div>' +
+              '<div class="score-mini">G1:' + r.pre_scores[0] + ' G2:' + r.pre_scores[1] + ' G3:' + r.pre_scores[2] + ' G4:' + r.pre_scores[3] + ' G5:' + r.pre_scores[4] + '</div>'
+            : '<span class="pill pill-muted">Belum</span>';
+
+          const postHtml = r.post_done
+            ? '<div><span class="pill pill-post">' + fmtNum(r.post_avg) + '</span></div>' +
+              '<div class="score-mini">G1:' + r.post_scores[0] + ' G2:' + r.post_scores[1] + ' G3:' + r.post_scores[2] + ' G4:' + r.post_scores[3] + ' G5:' + r.post_scores[4] + '</div>'
+            : '<span class="pill pill-muted">Belum</span>';
+
+          let gainHtml = '<span class="gain-zero">-</span>';
+          if (r.gain !== null) {
+            const gCls = r.gain > 0 ? "gain-pos" : (r.gain < 0 ? "gain-neg" : "gain-zero");
+            gainHtml = '<span class="' + gCls + '">' + (r.gain > 0 ? "+" : "") + r.gain.toFixed(1) + '</span>';
+          }
+
+          const resetPreBtn = r.pre_done
+            ? '<button class="btn btn-danger btn-sm" data-reset-mode="PRETEST" data-nama="' + esc(r.nama) + '" data-absen="' + esc(r.absen) + '" data-kelas="' + esc(r.kelas) + '">Reset Pre</button>'
+            : '';
+          const resetPostBtn = r.post_done
+            ? '<button class="btn btn-danger btn-sm" data-reset-mode="POSTTEST" data-nama="' + esc(r.nama) + '" data-absen="' + esc(r.absen) + '" data-kelas="' + esc(r.kelas) + '">Reset Post</button>'
+            : '';
+          const actionsHtml = (resetPreBtn || resetPostBtn)
+            ? '<div class="row-gap">' + resetPreBtn + resetPostBtn + '</div>'
+            : '<span style="color:var(--text-muted);font-size:12px;">-</span>';
+
+          return '<tr>' +
+            '<td class="mono">' + esc(r.absen ? String(r.absen).padStart(2, "0") : "-") + '</td>' +
+            '<td><strong>' + esc(r.nama) + '</strong>' + (r.nis ? '<div class="score-mini">NIS ' + esc(r.nis) + '</div>' : '') + '</td>' +
+            '<td><span class="pill pill-muted">' + esc(r.kelas) + '</span></td>' +
+            '<td>' + preHtml + '</td>' +
+            '<td>' + postHtml + '</td>' +
+            '<td>' + gainHtml + '</td>' +
+            '<td>' + actionsHtml + '</td>' +
+            '</tr>';
+        }).join("");
+      }
+
+      function renderLeaderboardTab() {
+        const d = state.dashboard;
+        if (!d) return;
+        const clsFilter = el("lbClassFilter").value;
+
+        el("lbSubPre").className = "btn btn-sm" + (state.lbScope === "PRETEST" ? " btn-gold" : "");
+        el("lbSubPost").className = "btn btn-sm" + (state.lbScope === "POSTTEST" ? " btn-green" : "");
+        el("lbSubGain").className = "btn btn-sm" + (state.lbScope === "GAIN" ? " btn-gold" : "");
+
+        let rows = [];
+        if (state.lbScope === "GAIN") {
+          el("lbColDetail").textContent = "Pre-Test -> Post-Test";
+          el("lbColMain").textContent = "Gain";
+          const merged = buildMergedStudents().filter((r) => r.pre_done && r.post_done);
+          rows = merged
+            .filter((r) => clsFilter === "ALL" || r.kelas === clsFilter)
+            .sort((a, b) => (b.gain - a.gain) || (b.post_avg - a.post_avg))
+            .map((r, i) => ({
+              rank: i + 1,
+              nama: r.nama,
+              absen: r.absen,
+              kelas: r.kelas,
+              detail: "Pre: " + fmtNum(r.pre_avg) + "  ->  Post: " + fmtNum(r.post_avg),
+              mainVal: (r.gain > 0 ? "+" : "") + r.gain.toFixed(1),
+              mainNum: r.gain
+            }));
+        } else {
+          el("lbColDetail").textContent = "Skor Stage (G1 - G5)";
+          el("lbColMain").textContent = "Rata-rata";
+          const snap = state.lbScope === "POSTTEST" ? (d.posttest || {}) : (d.pretest || {});
+          const src = clsFilter === "PPLG A"
+            ? (snap.pplga_list || [])
+            : (clsFilter === "PPLG B" ? (snap.pplgb_list || []) : (snap.overall_list || []));
+          rows = src.map((it, i) => {
+            const sc = Array.isArray(it.scores) ? it.scores : [0, 0, 0, 0, 0];
+            return {
+              rank: i + 1,
+              nama: it.nama,
+              absen: it.absen,
+              kelas: it.kelas,
+              detail: "G1:" + sc[0] + "  G2:" + sc[1] + "  G3:" + sc[2] + "  G4:" + sc[3] + "  G5:" + sc[4],
+              mainVal: Number(it.poin || 0).toFixed(2),
+              mainNum: Number(it.poin || 0)
+            };
+          });
+        }
+
+        // Top-3 Podium (urut visual #2, #1, #3 pada desktop)
+        const podiumEl = el("podiumContainer");
+        if (rows.length > 0) {
+          const order = rows.length >= 3 ? [rows[1], rows[0], rows[2]] : rows.slice(0, 3);
+          podiumEl.innerHTML = order.map((r) =>
+            '<div class="podium-card rank-' + r.rank + '">' +
+              '<div class="podium-rank">PERINGKAT #' + r.rank + '</div>' +
+              '<div class="podium-name">' + esc(r.nama) + '</div>' +
+              '<div class="podium-meta">' + esc(r.kelas) + (r.absen ? " &bull; Absen " + esc(r.absen) : "") + '</div>' +
+              '<div class="podium-score">' + esc(r.mainVal) + '</div>' +
+            '</div>'
+          ).join("");
+        } else {
+          podiumEl.innerHTML = '<div class="alert" style="grid-column: 1 / -1; text-align:center;">Belum ada data peserta pada kategori peringkat ini.</div>';
+        }
+
+        const tbody = el("lbTbody");
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">Belum ada data.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.map((r) =>
+          '<tr>' +
+            '<td class="mono"><strong>#' + r.rank + '</strong></td>' +
+            '<td><strong>' + esc(r.nama) + '</strong></td>' +
+            '<td class="mono">' + esc(r.absen || "-") + '</td>' +
+            '<td><span class="pill pill-muted">' + esc(r.kelas) + '</span></td>' +
+            '<td class="mono" style="font-size:12.5px;color:var(--text-dim);">' + esc(r.detail) + '</td>' +
+            '<td class="mono" style="font-size:16px;font-weight:800;color:var(--green);">' + esc(r.mainVal) + '</td>' +
+          '</tr>'
+        ).join("");
+      }
+
+      function renderLogsTab() {
+        const logs = (state.dashboard && state.dashboard.recent_logs) || [];
+        const q = el("logSearch").value.trim().toLowerCase();
+        const modeF = el("logMode").value;
+        const resF = el("logResult").value;
+
+        const filtered = logs.filter((l) => {
+          if (modeF !== "ALL" && String(l.mode || "").toUpperCase() !== modeF) return false;
+          if (resF !== "ALL" && String(l.hasil || "").toUpperCase() !== resF) return false;
+          if (q) {
+            const hay = (l.nama + " " + l.kelas + " " + l.level_id + " " + l.jawaban_siswa + " " + l.kunci_jawaban).toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+
+        const tbody = el("logsTbody");
+        if (!filtered.length) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">Belum ada log jawaban cocok.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = filtered.map((l) => {
+          const isPost = String(l.mode || "").toUpperCase() === "POSTTEST";
+          const isOk = String(l.hasil || "").toUpperCase() === "BENAR";
+          return '<tr>' +
+            '<td class="mono" style="font-size:12px;color:var(--text-dim);">' + esc(fmtTime(l.timestamp)) + '</td>' +
+            '<td><span class="pill ' + (isPost ? "pill-post" : "pill-pre") + '">' + (isPost ? "POST" : "PRE") + '</span></td>' +
+            '<td><strong>' + esc(l.nama) + '</strong><div class="score-mini">' + esc(l.kelas) + (l.absen ? " #" + esc(l.absen) : "") + '</div></td>' +
+            '<td class="mono">' + esc(l.level_id) + '</td>' +
+            '<td class="mono" style="font-size:12.5px;">' + esc(l.jawaban_siswa) + '</td>' +
+            '<td class="mono" style="font-size:12.5px;color:var(--text-dim);">' + esc(l.kunci_jawaban) + '</td>' +
+            '<td><span class="pill ' + (isOk ? "pill-ok" : "pill-err") + '">' + esc(l.hasil) + '</span></td>' +
+            '<td class="mono"><strong>' + Number(l.poin || 0) + '</strong></td>' +
+            '<td class="mono">' + Number(l.durasi_detik || 0) + 's</td>' +
+          '</tr>';
+        }).join("");
+      }
+
+      function renderAll() {
+        renderControlsAndKpis();
+        renderMonitorTable();
+        renderLeaderboardTab();
+        renderLogsTab();
+      }
+
+      function exportComparisonCsv() {
+        const rows = buildMergedStudents();
+        const csvEsc = (v) => {
+          const s = String(v == null ? "" : v);
+          return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const lines = [
+          "Absen,NIS,Nama,Kelas,Pre_G1,Pre_G2,Pre_G3,Pre_G4,Pre_G5,Pre_RataRata,Post_G1,Post_G2,Post_G3,Post_G4,Post_G5,Post_RataRata,Gain"
+        ];
+        rows.forEach((r) => {
+          lines.push([
+            r.absen, r.nis, r.nama, r.kelas,
+            r.pre_done ? r.pre_scores[0] : "",
+            r.pre_done ? r.pre_scores[1] : "",
+            r.pre_done ? r.pre_scores[2] : "",
+            r.pre_done ? r.pre_scores[3] : "",
+            r.pre_done ? r.pre_scores[4] : "",
+            r.pre_done ? r.pre_avg : "",
+            r.post_done ? r.post_scores[0] : "",
+            r.post_done ? r.post_scores[1] : "",
+            r.post_done ? r.post_scores[2] : "",
+            r.post_done ? r.post_scores[3] : "",
+            r.post_done ? r.post_scores[4] : "",
+            r.post_done ? r.post_avg : "",
+            r.gain !== null ? r.gain : ""
+          ].map(csvEsc).join(","));
+        });
+        const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "rekap_pre_vs_post_dos_rescue.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("CSV Rekap Pre vs Post berhasil diunduh.", "ok");
+      }
+
+      function toggleAutoRefresh() {
+        state.autoRefresh = !state.autoRefresh;
+        el("btnAutoRefresh").textContent = "Auto 10d: " + (state.autoRefresh ? "ON" : "OFF");
+        el("btnAutoRefresh").className = "btn" + (state.autoRefresh ? " btn-green" : "");
+        clearInterval(state.autoTimer);
+        if (state.autoRefresh) {
+          state.autoTimer = setInterval(() => {
+            if (!state.busy && state.pin) fetchDashboard(true).catch(() => {});
+          }, 10000);
+        }
+      }
+
+      function bindEvents() {
+        el("loginForm").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const errBox = el("loginError");
+          errBox.classList.add("hidden");
+          const urlVal = el("scriptUrlInput").value.trim();
+          if (urlVal) state.appsScriptUrl = urlVal;
+          const pinVal = el("pinInput").value.trim();
+          if (!pinVal) return;
+
+          el("loginBtn").disabled = true;
+          el("loginBtn").textContent = "MEMERIKSA PIN...";
+          state.pin = pinVal;
+          try {
+            await fetchDashboard(true);
+            sessionStorage.setItem("dos_admin_pin", state.pin);
+            el("loginView").classList.add("hidden");
+            el("appView").classList.remove("hidden");
+          } catch (err) {
+            state.pin = "";
+            errBox.textContent = "Gagal masuk: " + err.message;
+            errBox.classList.remove("hidden");
+          } finally {
+            el("loginBtn").disabled = false;
+            el("loginBtn").textContent = "MASUK DASHBOARD ADMIN";
+          }
+        });
+
+        el("btnRefresh").addEventListener("click", () => {
+          fetchDashboard(false).catch((err) => showToast("Gagal refresh: " + err.message, "err"));
+        });
+        el("btnAutoRefresh").addEventListener("click", toggleAutoRefresh);
+        el("btnExportCsv").addEventListener("click", exportComparisonCsv);
+        el("btnSyncSheets").addEventListener("click", async () => {
+          try {
+            showToast("Menyinkronkan seluruh sheet...");
+            const res = await apiPost({ event: "ADMIN_SYNC_ALL", pin: state.pin });
+            if (!res || !res.ok) throw new Error((res && res.error) || "Gagal sinkron");
+            await fetchDashboard(true);
+            showToast("Seluruh sheet Pre-Test, Post-Test & Rekap berhasil disinkron!", "ok");
+          } catch (err) {
+            showToast("Gagal sinkron: " + err.message, "err");
+          }
+        });
+
+        el("btnLogout").addEventListener("click", () => {
+          clearInterval(state.autoTimer);
+          state.autoRefresh = false;
+          state.pin = "";
+          sessionStorage.removeItem("dos_admin_pin");
+          el("pinInput").value = "";
+          el("appView").classList.add("hidden");
+          el("loginView").classList.remove("hidden");
+        });
+
+        el("btnModePre").addEventListener("click", () => {
+          updateConfig({ active_mode: "PRETEST" }, "Mode aktif diganti ke PRE-TEST.");
+        });
+        el("btnModePost").addEventListener("click", () => {
+          updateConfig({ active_mode: "POSTTEST" }, "Mode aktif diganti ke POST-TEST.");
+        });
+        el("btnToggleSpillPre").addEventListener("click", () => {
+          const cur = !!(state.dashboard && state.dashboard.config && state.dashboard.config.reveal_pretest_results);
+          updateConfig({ reveal_pretest_results: !cur }, !cur ? "Nilai & peringkat PRE-TEST DIBUKA (Spill) ke siswa!" : "Nilai & peringkat PRE-TEST disembunyikan kembali.");
+        });
+        el("btnToggleSpillPost").addEventListener("click", () => {
+          const cur = !!(state.dashboard && state.dashboard.config && state.dashboard.config.reveal_posttest_results);
+          updateConfig({ reveal_posttest_results: !cur }, !cur ? "Nilai & peringkat POST-TEST DIBUKA (Spill) ke siswa!" : "Nilai & peringkat POST-TEST disembunyikan kembali.");
+        });
+        el("btnToggleMateriPre").addEventListener("click", () => {
+          const cur = !!(state.dashboard && state.dashboard.config && state.dashboard.config.allow_materi_pretest);
+          updateConfig({ allow_materi_pretest: !cur }, !cur ? "Tombol MATERI dibuka untuk Pre-Test." : "Tombol MATERI dikunci saat Pre-Test.");
+        });
+        el("btnToggleMateriPost").addEventListener("click", () => {
+          const cur = !!(state.dashboard && state.dashboard.config && state.dashboard.config.allow_materi_posttest);
+          updateConfig({ allow_materi_posttest: !cur }, !cur ? "Tombol MATERI dibuka untuk Post-Test." : "Tombol MATERI dikunci saat Post-Test.");
+        });
+
+        // Tabs
+        document.querySelectorAll(".tab-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const tab = btn.dataset.tab;
+            state.activeTab = tab;
+            document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+            ["monitor", "leaderboard", "logs"].forEach((t) => {
+              el("tab-" + t).classList.toggle("hidden", t !== tab);
+            });
+          });
+        });
+
+        // Monitor filters + reset delegation
+        ["monSearch", "monClass", "monStatus"].forEach((id) => {
+          el(id).addEventListener("input", renderMonitorTable);
+          el(id).addEventListener("change", renderMonitorTable);
+        });
+        el("monitorTbody").addEventListener("click", (e) => {
+          const btn = e.target.closest("button[data-reset-mode]");
+          if (!btn) return;
+          resetStudent(btn.dataset.nama, btn.dataset.absen, btn.dataset.kelas, btn.dataset.resetMode);
+        });
+
+        // Leaderboard controls
+        el("lbSubPre").addEventListener("click", () => { state.lbScope = "PRETEST"; renderLeaderboardTab(); });
+        el("lbSubPost").addEventListener("click", () => { state.lbScope = "POSTTEST"; renderLeaderboardTab(); });
+        el("lbSubGain").addEventListener("click", () => { state.lbScope = "GAIN"; renderLeaderboardTab(); });
+        el("lbClassFilter").addEventListener("change", renderLeaderboardTab);
+        el("btnFullscreen").addEventListener("click", () => {
+          const panel = el("tab-leaderboard");
+          if (!document.fullscreenElement) {
+            panel.requestFullscreen && panel.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen && document.exitFullscreen().catch(() => {});
+          }
+        });
+
+        // Logs filters
+        ["logSearch", "logMode", "logResult"].forEach((id) => {
+          el(id).addEventListener("input", renderLogsTab);
+          el(id).addEventListener("change", renderLogsTab);
+        });
+
+        // Change PIN Modal
+        el("btnChangePin").addEventListener("click", () => {
+          el("newPinInput").value = "";
+          el("pinModal").classList.add("show");
+          el("newPinInput").focus();
+        });
+        el("btnCancelPin").addEventListener("click", () => el("pinModal").classList.remove("show"));
+        el("btnSavePin").addEventListener("click", async () => {
+          const np = el("newPinInput").value.trim();
+          if (np.length < 4) {
+            showToast("PIN baru minimal 4 karakter.", "err");
+            return;
+          }
+          el("pinModal").classList.remove("show");
+          await updateConfig({ new_pin: np }, "PIN Admin berhasil diperbarui!");
+        });
+      }
+
+      async function boot() {
+        await loadStaticFiles();
+        bindEvents();
+        const savedPin = sessionStorage.getItem("dos_admin_pin");
+        if (savedPin && state.appsScriptUrl) {
+          state.pin = savedPin;
+          try {
+            await fetchDashboard(true);
+            el("loginView").classList.add("hidden");
+            el("appView").classList.remove("hidden");
+          } catch (_e) {
+            state.pin = "";
+            sessionStorage.removeItem("dos_admin_pin");
+          }
+        }
+      }
+
+      boot();
+    })();
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 class_name BaseMinigame
 extends Control
-## Kelas induk modular untuk seluruh 5 minigame DOS/CMD (Retro Pixel Art 128-bit, 1-baris HUD).
+## Kelas induk modular untuk seluruh 5 minigame DOS/CMD (Retro Pixel Art 128-bit, 1-baris HUD, semat input).
 
 @export var minigame_id: String = "mg1"
 
@@ -9,7 +9,11 @@ var _current_index: int = 0
 var _attempts_on_level: int = 0
 var _level_solved: bool = false
 var _level_started_unix: float = 0.0
+var _level_elapsed_sec: float = 0.0
+var _last_countdown_sec: int = 30
+var _timeout_warned: bool = false
 var _current_mode: AdaptiveLayout.LayoutMode = AdaptiveLayout.LayoutMode.WIDE_DESKTOP
+var _input_pinned: bool = false
 
 var _margin: MarginContainer
 var _main_vbox: VBoxContainer
@@ -20,10 +24,16 @@ var _feedback_box: PanelContainer
 var _feedback_label: Label
 var _scroll: ScrollContainer
 var _content_root: VBoxContainer
+var _output_root: VBoxContainer
+var _unpinned_input_slot: VBoxContainer
+var _input_root: VBoxContainer
+var _pinned_input_panel: PanelContainer
+var _pinned_input_scroll: TouchScrollContainer
+var _pinned_input_slot: VBoxContainer
 var _footer_panel: PanelContainer
 var _footer_bar: HBoxContainer
 var _footer_spacer: Control
-var _reset_btn: Button
+var _pin_input_btn: Button
 var _check_btn: Button
 var _next_btn: Button
 var _completion_backdrop: ColorRect
@@ -34,11 +44,33 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UiTheme.create_theme()
 	_levels = LevelsCatalog.get_levels(minigame_id)
+	_current_index = _find_initial_level_index()
 	_build_shell()
-	_setup_content(_content_root)
+	_setup_content(_output_root)
+	_setup_input(_input_root)
+	_refresh_pin_button_ui()
+	GameConfig.exam_config_updated.connect(_on_exam_config_updated)
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_on_viewport_resized()
 	_load_current_level()
+
+
+func _exit_tree() -> void:
+	if GameConfig.exam_config_updated.is_connected(_on_exam_config_updated):
+		GameConfig.exam_config_updated.disconnect(_on_exam_config_updated)
+
+
+func _on_exam_config_updated() -> void:
+	if is_inside_tree():
+		_refresh_hud()
+
+
+func _find_initial_level_index() -> int:
+	for i: int in range(_levels.size()):
+		var lid: String = str(_levels[i].get("id", ""))
+		if lid.is_empty() or (not GameSession.level_answered.has(lid) and not GameSession.level_best_scores.has(lid)):
+			return i
+	return _levels.size()
 
 
 func _build_shell() -> void:
@@ -64,7 +96,7 @@ func _build_shell() -> void:
 	)
 	_main_vbox.add_child(_hud)
 
-	# Area kerja tengah (Misi + Monitor/Puzzle + Dek Blok dalam 1 ScrollContainer lega)
+	# Area kerja tengah (Misi + Output di atas, Input di bawah dalam 1 ScrollContainer lega)
 	_scroll = TouchScrollContainer.new()
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -116,7 +148,46 @@ func _build_shell() -> void:
 	_feedback_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_feedback_box.add_child(_feedback_label)
 
-	# Baris Bawah: Dock Aksi Maksimal 2 Tombol ([ ULANG ] + [ CEK JAWABAN ] / [ LANJUT > ])
+	# Area Output (selalu di atas input)
+	_output_root = VBoxContainer.new()
+	_output_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_output_root.add_theme_constant_override("separation", 10)
+	_content_root.add_child(_output_root)
+
+	# Slot Input di dalam ScrollContainer (saat tidak disematkan)
+	_unpinned_input_slot = VBoxContainer.new()
+	_unpinned_input_slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_unpinned_input_slot.add_theme_constant_override("separation", 8)
+	_content_root.add_child(_unpinned_input_slot)
+
+	_input_root = VBoxContainer.new()
+	_input_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_input_root.add_theme_constant_override("separation", 8)
+	_unpinned_input_slot.add_child(_input_root)
+
+	# Dock Input Tersemat (di luar _scroll, tetap diam di atas footer saat scroll game)
+	_pinned_input_panel = PanelContainer.new()
+	_pinned_input_panel.visible = false
+	_pinned_input_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiTheme.style_gold_panel(_pinned_input_panel, 8.0)
+	_main_vbox.add_child(_pinned_input_panel)
+
+	_pinned_input_scroll = TouchScrollContainer.new()
+	_pinned_input_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_pinned_input_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_pinned_input_panel.add_child(_pinned_input_scroll)
+
+	var pin_pad := MarginContainer.new()
+	pin_pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pin_pad.add_theme_constant_override("margin_right", 4)
+	_pinned_input_scroll.add_child(pin_pad)
+
+	_pinned_input_slot = VBoxContainer.new()
+	_pinned_input_slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_pinned_input_slot.add_theme_constant_override("separation", 8)
+	pin_pad.add_child(_pinned_input_slot)
+
+	# Baris Bawah: Dock Aksi ([ SEMATKAN INPUT ] + [ CEK JAWABAN ] / [ LANJUT > ])
 	_footer_panel = PanelContainer.new()
 	_footer_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UiTheme.style_rpg_panel(_footer_panel, 10.0)
@@ -127,15 +198,14 @@ func _build_shell() -> void:
 	_footer_bar.add_theme_constant_override("separation", 10)
 	_footer_panel.add_child(_footer_bar)
 
-	_reset_btn = Button.new()
-	_reset_btn.text = "ULANG"
-	UiTheme.style_blue_button(_reset_btn, "", true)
-	_reset_btn.custom_minimum_size = Vector2(112.0, 50.0)
-	_reset_btn.pressed.connect(func() -> void:
-		AudioManager.play_click()
-		_on_reset_level_pressed()
+	_pin_input_btn = Button.new()
+	_pin_input_btn.text = "SEMATKAN INPUT"
+	_pin_input_btn.custom_minimum_size = Vector2(168.0, 50.0)
+	_pin_input_btn.pressed.connect(func() -> void:
+		set_input_pinned(not _input_pinned)
+		AudioManager.play_pin_toggle(_input_pinned)
 	)
-	_footer_bar.add_child(_reset_btn)
+	_footer_bar.add_child(_pin_input_btn)
 
 	_footer_spacer = Control.new()
 	_footer_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -180,6 +250,67 @@ func _build_shell() -> void:
 	comp_center.add_child(_completion_overlay)
 
 
+func is_input_pinned() -> bool:
+	return _input_pinned
+
+
+func set_input_pinned(pinned: bool) -> void:
+	if _input_root == null or _pinned_input_slot == null or _unpinned_input_slot == null:
+		return
+	_input_pinned = pinned
+	var target_parent: Node = _pinned_input_slot if _input_pinned else _unpinned_input_slot
+	if _input_root.get_parent() != target_parent:
+		_input_root.reparent(target_parent, false)
+	_unpinned_input_slot.visible = not _input_pinned
+	_pinned_input_panel.visible = _input_pinned and _input_root.get_child_count() > 0
+	_refresh_pin_button_ui()
+	call_deferred("_update_pinned_dock_height")
+
+
+func refresh_pinned_layout() -> void:
+	if _input_pinned:
+		call_deferred("_update_pinned_dock_height")
+
+
+func _update_pinned_dock_height() -> void:
+	if not is_inside_tree() or _pinned_input_panel == null or _pinned_input_scroll == null or _input_root == null:
+		return
+	if not _input_pinned:
+		_pinned_input_panel.visible = false
+		return
+	_pinned_input_panel.visible = _input_root.get_child_count() > 0
+	if not _pinned_input_panel.visible:
+		return
+	var vp := get_viewport()
+	var vp_h: float = vp.get_visible_rect().size.y if vp != null else 720.0
+	var max_dock_h: float = clampf(vp_h * 0.36, 120.0, 260.0)
+	var needed_h: float = _input_root.get_combined_minimum_size().y + 8.0
+	_pinned_input_scroll.custom_minimum_size = Vector2(0.0, clampf(needed_h, 88.0, max_dock_h))
+
+
+func _refresh_pin_button_ui() -> void:
+	if _pin_input_btn == null:
+		return
+	var has_input: bool = _input_root != null and _input_root.get_child_count() > 0
+	_pin_input_btn.visible = has_input
+	if not has_input:
+		return
+	var is_comp: bool = (_current_mode == AdaptiveLayout.LayoutMode.COMPACT_PORTRAIT)
+	if _input_pinned:
+		_pin_input_btn.text = "TERSEMAT" if is_comp else "TERSEMAT [ON]"
+		_pin_input_btn.tooltip_text = "Lepas sematan area input jawaban"
+		UiTheme.style_chip_button(_pin_input_btn, true)
+		if UiTheme.get_pixel_font() != null:
+			_pin_input_btn.add_theme_font_override("font", UiTheme.get_pixel_font())
+			_pin_input_btn.add_theme_font_size_override("font_size", 14 if is_comp else 15)
+	else:
+		_pin_input_btn.text = "SEMATKAN" if is_comp else "SEMATKAN INPUT"
+		_pin_input_btn.tooltip_text = "Sematkan area input jawaban agar tidak ikut tergeser saat scroll"
+		UiTheme.style_blue_button(_pin_input_btn, "", true)
+		_pin_input_btn.add_theme_font_size_override("font_size", 14 if is_comp else 15)
+	_pin_input_btn.custom_minimum_size = Vector2(116.0 if is_comp else 184.0, 50.0)
+
+
 func _on_viewport_resized() -> void:
 	UiTheme.apply_centered_margins(_margin, 980.0, 12)
 	var vp_size := get_viewport().get_visible_rect().size
@@ -187,36 +318,115 @@ func _on_viewport_resized() -> void:
 	var is_comp := (_current_mode == AdaptiveLayout.LayoutMode.COMPACT_PORTRAIT)
 	if _hud != null:
 		_hud.set_compact_mode(is_comp)
-	if _footer_spacer != null and _check_btn != null and _next_btn != null and _reset_btn != null:
+	if _footer_spacer != null and _check_btn != null and _next_btn != null and _pin_input_btn != null:
 		_footer_spacer.visible = not is_comp
 		var flag: int = Control.SIZE_EXPAND_FILL if is_comp else Control.SIZE_SHRINK_END
 		_check_btn.size_flags_horizontal = flag
 		_next_btn.size_flags_horizontal = flag
-		_reset_btn.custom_minimum_size = Vector2(92.0 if is_comp else 120.0, 50.0)
+		_pin_input_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		_check_btn.custom_minimum_size = Vector2(140.0 if is_comp else 240.0, 50.0)
 		_next_btn.custom_minimum_size = Vector2(140.0 if is_comp else 240.0, 50.0)
 		_check_btn.icon = null if is_comp else UiTheme.get_icon_2x("play", 2)
 		_next_btn.icon = null if is_comp else UiTheme.get_icon_2x("play", 2)
+		_refresh_pin_button_ui()
 	_on_layout_mode_changed(_current_mode)
+	call_deferred("_update_pinned_dock_height")
+
+
+func _process(delta: float) -> void:
+	if _level_solved or _current_index >= _levels.size():
+		return
+	_level_elapsed_sec += delta
+	var limit_sec: float = GameConfig.level_time_limit_sec
+	var rem_sec: float = maxf(0.0, limit_sec - _level_elapsed_sec)
+	var is_overtime: bool = _level_elapsed_sec >= limit_sec
+	var score_info: Dictionary = compute_level_score(
+		_level_elapsed_sec,
+		0,
+		GameConfig.retry_penalty_per_mistake,
+		GameConfig.min_score_on_solve,
+		limit_sec,
+		GameConfig.time_grace_sec
+	)
+	var t_pen: int = int(score_info.get("time_penalty", 0))
+	var cur_sec_int: int = int(ceilf(rem_sec))
+	var pulse_timer: bool = false
+
+	if not is_overtime and cur_sec_int != _last_countdown_sec:
+		_last_countdown_sec = cur_sec_int
+		if cur_sec_int > 0 and cur_sec_int <= 5:
+			AudioManager.play_timer_tick(cur_sec_int <= 3)
+			pulse_timer = true
+	elif is_overtime and not _timeout_warned:
+		_timeout_warned = true
+		_last_countdown_sec = 0
+		AudioManager.play_timeout_warn()
+		pulse_timer = true
+
+	if _hud != null:
+		_hud.update_timer(rem_sec, is_overtime, t_pen, pulse_timer)
+
+
+static func compute_level_score(
+	elapsed_sec: float,
+	mistakes: int,
+	retry_penalty: int,
+	min_score: int,
+	max_time_sec: float = 30.0,
+	grace_sec: float = 10.0
+) -> Dictionary:
+	var safe_elapsed: float = maxf(0.0, elapsed_sec)
+	var safe_limit: float = maxf(10.0, max_time_sec)
+	var safe_grace: float = clampf(grace_sec, 0.0, safe_limit)
+	var safe_min: int = clampi(min_score, 10, 100)
+	var is_overtime: bool = safe_elapsed > safe_limit
+
+	var time_pen: int = 0
+	if safe_elapsed > safe_grace:
+		var within_limit_over: float = minf(safe_elapsed, safe_limit) - safe_grace
+		# Dalam jendela penalti (detik 10 -> 30): -5 poin setiap 2 detik (maks -50 di detik 30)
+		time_pen += int(floorf(within_limit_over / 2.0)) * 5
+		if is_overtime:
+			var overtime_sec: float = safe_elapsed - safe_limit
+			# Lewat batas 30 detik: tambahan penalti -5 poin setiap 3 detik (sampai batas minimal 10 poin)
+			time_pen += (1 + int(floorf(overtime_sec / 3.0))) * 5
+
+	var mistake_pen: int = maxi(0, mistakes) * maxi(0, retry_penalty)
+	var raw_poin: int = 100 - time_pen - mistake_pen
+	var final_poin: int = maxi(safe_min, raw_poin)
+	return {
+		"poin": final_poin,
+		"time_penalty": time_pen,
+		"mistake_penalty": mistake_pen,
+		"is_overtime": is_overtime,
+	}
 
 
 func _load_current_level() -> void:
 	if _current_index >= _levels.size():
+		set_process(false)
 		_show_completion_summary()
 		return
 	var lv: Dictionary = _levels[_current_index]
 	_attempts_on_level = 0
 	_level_solved = false
 	_level_started_unix = Time.get_unix_time_from_system()
+	_level_elapsed_sec = 0.0
+	_last_countdown_sec = int(ceilf(GameConfig.level_time_limit_sec))
+	_timeout_warned = false
 	_mission_label.text = "Misi: " + str(lv.get("mission", ""))
 	_feedback_box.visible = false
 	_check_btn.visible = true
 	_check_btn.disabled = false
-	_check_btn.text = "CEK JAWABAN"
-	_reset_btn.visible = true
+	_check_btn.text = "KIRIM JAWABAN" if GameConfig.exam_blind_mode else "CEK JAWABAN"
 	_next_btn.visible = false
 	_refresh_hud()
+	if _hud != null:
+		_hud.update_timer(GameConfig.level_time_limit_sec, false, 0, false)
 	_load_level(lv)
+	_refresh_pin_button_ui()
+	call_deferred("_update_pinned_dock_height")
+	set_process(true)
 	_check_btn.grab_focus()
 
 
@@ -227,7 +437,10 @@ func _stage_number() -> int:
 
 func _refresh_hud() -> void:
 	var score_val: int = int(GameSession.mg_scores.get(minigame_id, 0))
-	_hud.configure(_stage_number(), _current_index, _levels.size(), score_val)
+	var show_score: bool = GameConfig.is_results_revealed_for(GameSession.test_mode)
+	var mode_lbl: String = GameConfig.get_mode_label(GameSession.test_mode)
+	var show_materi: bool = GameConfig.is_materi_allowed_for(GameSession.test_mode)
+	_hud.configure(_stage_number(), _current_index, _levels.size(), score_val, show_score, mode_lbl, show_materi)
 
 
 func show_feedback(is_ok: bool, text: String) -> void:
@@ -255,12 +468,25 @@ func submit_attempt(jawaban_siswa: String, kunci_jawaban: String, is_correct: bo
 	_attempts_on_level += 1
 	var lv: Dictionary = _levels[_current_index]
 	var lid: String = str(lv.get("id", ""))
-	var dur: float = maxf(1.0, Time.get_unix_time_from_system() - _level_started_unix)
+	var dur: float = maxf(1.0, maxf(_level_elapsed_sec, Time.get_unix_time_from_system() - _level_started_unix))
+	var elapsed_for_score: float = maxf(_level_elapsed_sec, Time.get_unix_time_from_system() - _level_started_unix)
 
 	var poin: int = 0
+	var time_pen: int = 0
+	var mistake_pen: int = 0
 	if is_correct:
 		var mistakes: int = maxi(0, _attempts_on_level - 1)
-		poin = maxi(GameConfig.min_score_on_solve, 100 - mistakes * GameConfig.retry_penalty_per_mistake)
+		var sc_info: Dictionary = compute_level_score(
+			elapsed_for_score,
+			mistakes,
+			GameConfig.retry_penalty_per_mistake,
+			GameConfig.min_score_on_solve,
+			GameConfig.level_time_limit_sec,
+			GameConfig.time_grace_sec
+		)
+		poin = int(sc_info.get("poin", GameConfig.min_score_on_solve))
+		time_pen = int(sc_info.get("time_penalty", 0))
+		mistake_pen = int(sc_info.get("mistake_penalty", 0))
 
 	var entry: Dictionary = GameSession.record_attempt(
 		minigame_id,
@@ -275,12 +501,29 @@ func submit_attempt(jawaban_siswa: String, kunci_jawaban: String, is_correct: bo
 	)
 	TelemetryService.send_level_log(entry)
 
+	if GameConfig.exam_blind_mode:
+		_level_solved = true
+		set_process(false)
+		AudioManager.play_block_place()
+		show_info_feedback("Jawaban tersimpan! Tekan LANJUT untuk melanjutkan ke soal berikutnya.")
+		_check_btn.visible = false
+		_next_btn.visible = true
+		_next_btn.text = "SELESAI STAGE >" if _current_index >= _levels.size() - 1 else "LANJUT >"
+		_next_btn.grab_focus()
+		_refresh_hud()
+		return
+
 	if is_correct:
 		_level_solved = true
+		set_process(false)
 		AudioManager.play_success()
-		show_feedback(true, "%s (Poin: +%d)" % [feedback_text, poin])
+		var detail_parts: Array[String] = ["Poin: +%d" % poin, "Waktu: %ds" % int(roundf(dur))]
+		if time_pen > 0:
+			detail_parts.append("Penalti waktu: -%d" % time_pen)
+		if mistake_pen > 0:
+			detail_parts.append("Penalti salah: -%d" % mistake_pen)
+		show_feedback(true, "%s (%s)" % [feedback_text, " | ".join(detail_parts)])
 		_check_btn.visible = false
-		_reset_btn.visible = false
 		_next_btn.visible = true
 		_next_btn.text = "LIHAT HASIL >" if _current_index >= _levels.size() - 1 else "LANJUT >"
 		_next_btn.grab_focus()
@@ -291,8 +534,8 @@ func submit_attempt(jawaban_siswa: String, kunci_jawaban: String, is_correct: bo
 		UiTheme.shake_control(_mission_panel, 6.0)
 		if not GameConfig.allow_retry:
 			_level_solved = true
+			set_process(false)
 			_check_btn.visible = false
-			_reset_btn.visible = false
 			_next_btn.visible = true
 			_next_btn.grab_focus()
 
@@ -320,19 +563,35 @@ func _show_completion_summary() -> void:
 	UiTheme.style_parchment_heading(h, 24, UiTheme.COL_INK_ACCENT)
 	box.add_child(h)
 
+	var revealed: bool = GameConfig.is_results_revealed_for(GameSession.test_mode)
+	var mode_lbl: String = GameConfig.get_mode_label(GameSession.test_mode)
 	var score_val: int = int(GameSession.mg_scores.get(minigame_id, 0))
-	var stars_center := CenterContainer.new()
-	box.add_child(stars_center)
+	var star_row: HBoxContainer = null
 
-	var star_row := UiTheme.make_star_row(score_val, true, 32)
-	stars_center.add_child(star_row)
+	if revealed:
+		var stars_center := CenterContainer.new()
+		box.add_child(stars_center)
 
-	var info := Label.new()
-	info.text = "Skor Stage %d: %d / 100\nProgres tersimpan otomatis." % [_stage_number(), score_val]
-	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	info.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
-	box.add_child(info)
+		star_row = UiTheme.make_star_row(score_val, true, 32)
+		stars_center.add_child(star_row)
+
+		var info := Label.new()
+		info.text = "Skor Stage %d: %d / 100\nProgres tersimpan otomatis." % [_stage_number(), score_val]
+		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
+		box.add_child(info)
+	else:
+		var lock_center := CenterContainer.new()
+		box.add_child(lock_center)
+		lock_center.add_child(UiTheme.make_icon_rect("lock", 36))
+
+		var info := Label.new()
+		info.text = "Jawaban %s untuk Stage %d sudah tersimpan otomatis.\nNilai dan peringkat disembunyikan sampai dibuka oleh Admin." % [mode_lbl, _stage_number()]
+		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_theme_color_override("font_color", UiTheme.COL_INK_PRIMARY)
+		box.add_child(info)
 
 	var sync_lbl := Label.new()
 	sync_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -351,18 +610,19 @@ func _show_completion_summary() -> void:
 	)
 	box.add_child(btn_hub)
 
-	var btn_lb := Button.new()
-	btn_lb.text = "LIHAT PERINGKAT"
-	UiTheme.style_blue_button(btn_lb, "trophy", true)
-	btn_lb.pressed.connect(func() -> void:
-		AudioManager.play_click()
-		SceneRouter.open_leaderboard()
-	)
-	box.add_child(btn_lb)
+	if revealed:
+		var btn_lb := Button.new()
+		btn_lb.text = "LIHAT PERINGKAT"
+		UiTheme.style_blue_button(btn_lb, "trophy", true)
+		btn_lb.pressed.connect(func() -> void:
+			AudioManager.play_click()
+			SceneRouter.open_leaderboard()
+		)
+		box.add_child(btn_lb)
 
 	if GameSession.get_completed_minigame_count() >= GameSession.MG_IDS.size():
 		var btn_rep := Button.new()
-		btn_rep.text = "BUKA RAPOR AKHIR"
+		btn_rep.text = "BUKA RAPOR AKHIR" if revealed else "STATUS PENGUMPULAN"
 		UiTheme.style_blue_button(btn_rep, "report", true)
 		btn_rep.pressed.connect(func() -> void:
 			AudioManager.play_click()
@@ -374,10 +634,15 @@ func _show_completion_summary() -> void:
 	if _margin != null:
 		_margin.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
 	UiTheme.pulse_control(_completion_overlay, 0.92, 0.18)
-	var stars_lit := UiTheme.compute_star_count(score_val, true)
-	for i: int in range(star_row.get_child_count()):
-		if i < stars_lit:
-			UiTheme.pop_star(star_row.get_child(i) as Control, 0.08 * float(i))
+	if revealed and star_row != null:
+		var stars_lit := UiTheme.compute_star_count(score_val, true)
+		for i: int in range(star_row.get_child_count()):
+			if i < stars_lit:
+				UiTheme.pop_star(star_row.get_child(i) as Control, 0.10 * float(i))
+				if DisplayServer.get_name() != "headless":
+					get_tree().create_timer(0.10 * float(i), true, false, true).timeout.connect(func() -> void:
+						AudioManager.play_star_pop(i)
+					)
 	btn_hub.grab_focus()
 
 
@@ -385,12 +650,12 @@ func _setup_content(_parent: VBoxContainer) -> void:
 	pass
 
 
-func _load_level(_level: Dictionary) -> void:
+func _setup_input(_parent: VBoxContainer) -> void:
 	pass
 
 
-func _on_reset_level_pressed() -> void:
-	_load_current_level()
+func _load_level(_level: Dictionary) -> void:
+	pass
 
 
 func _on_submit_pressed() -> void:

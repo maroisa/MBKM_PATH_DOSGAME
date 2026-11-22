@@ -8,6 +8,8 @@ var _lb_message: String = ""
 
 var _margin: MarginContainer
 var _hdr_box: BoxContainer
+var _title_lbl: Label
+var _scope_flow: FlowContainer
 var _scope_buttons: Dictionary[String, Button] = {}
 var _personal_rank_lbl: Label
 var _personal_detail_lbl: Label
@@ -22,15 +24,25 @@ func _ready() -> void:
 	theme = UiTheme.create_theme()
 	_build_ui()
 	TelemetryService.leaderboard_updated.connect(_on_leaderboard_updated)
+	GameConfig.exam_config_updated.connect(_on_exam_config_updated)
 	get_viewport().size_changed.connect(_on_resized)
 	_on_resized()
 	if not TelemetryService.cached_leaderboard.is_empty():
 		_lb_data = TelemetryService.cached_leaderboard
 		_lb_status = "LOADED"
 		_render()
+	if DisplayServer.get_name() != "headless" and GameConfig.has_valid_apps_script_url():
+		TelemetryService.fetch_remote_exam_config()
 	TelemetryService.fetch_leaderboard()
 	if is_instance_valid(_close_btn):
 		_close_btn.grab_focus()
+
+
+func _exit_tree() -> void:
+	if TelemetryService.leaderboard_updated.is_connected(_on_leaderboard_updated):
+		TelemetryService.leaderboard_updated.disconnect(_on_leaderboard_updated)
+	if GameConfig.exam_config_updated.is_connected(_on_exam_config_updated):
+		GameConfig.exam_config_updated.disconnect(_on_exam_config_updated)
 
 
 func _build_ui() -> void:
@@ -68,13 +80,13 @@ func _build_ui() -> void:
 
 	title_row.add_child(UiTheme.make_icon_rect("trophy", 32))
 
-	var title := Label.new()
-	title.text = "PAPAN PERINGKAT"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UiTheme.style_parchment_heading(title, 16, UiTheme.COL_INK_ACCENT)
-	title_row.add_child(title)
+	_title_lbl = Label.new()
+	_title_lbl.text = "PAPAN PERINGKAT"
+	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	UiTheme.style_parchment_heading(_title_lbl, 16, UiTheme.COL_INK_ACCENT)
+	title_row.add_child(_title_lbl)
 
 	var hdr_btns := HBoxContainer.new()
 	hdr_btns.add_theme_constant_override("separation", 8)
@@ -86,7 +98,8 @@ func _build_ui() -> void:
 	_refresh_btn.custom_minimum_size = Vector2(118.0, UiTheme.MIN_TAP_HEIGHT)
 	_refresh_btn.pressed.connect(func() -> void:
 		AudioManager.play_click()
-		TelemetryService.fetch_leaderboard()
+		TelemetryService.fetch_remote_exam_config()
+		TelemetryService.fetch_leaderboard(true)
 	)
 	hdr_btns.add_child(_refresh_btn)
 
@@ -123,11 +136,11 @@ func _build_ui() -> void:
 	pv.add_child(_personal_detail_lbl)
 
 	# Filter tab sesuai kelas peserta: Keseluruhan 1-10 + kelas milik peserta saja (PPLG A atau PPLG B)
-	var scope_flow := FlowContainer.new()
-	scope_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scope_flow.add_theme_constant_override("h_separation", 8)
-	scope_flow.add_theme_constant_override("v_separation", 6)
-	root_v.add_child(scope_flow)
+	_scope_flow = FlowContainer.new()
+	_scope_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scope_flow.add_theme_constant_override("h_separation", 8)
+	_scope_flow.add_theme_constant_override("v_separation", 6)
+	root_v.add_child(_scope_flow)
 
 	var allowed_scopes: Array[Array] = [["overall", "Keseluruhan 1-10"]]
 	var user_scope: String = _get_user_class_scope()
@@ -143,7 +156,7 @@ func _build_ui() -> void:
 		btn.text = sname
 		UiTheme.style_chip_button(btn, sid == _active_scope)
 		btn.pressed.connect(_on_scope_selected.bind(sid))
-		scope_flow.add_child(btn)
+		_scope_flow.add_child(btn)
 		_scope_buttons[sid] = btn
 
 	_status_lbl = Label.new()
@@ -223,7 +236,74 @@ func _on_leaderboard_updated(status: String, data: Dictionary, message: String) 
 	_render()
 
 
+func _on_exam_config_updated() -> void:
+	if is_inside_tree():
+		_render()
+
+
+func _active_mode() -> String:
+	if GameSession.has_active_session():
+		return GameSession.test_mode
+	return GameConfig.active_test_mode
+
+
+func _is_results_revealed() -> bool:
+	var mode_now: String = _active_mode()
+	var cfg_rev: bool = GameConfig.is_results_revealed_for(mode_now)
+	if bool(_lb_data.get("has_revealed_flag", false)):
+		return cfg_rev and bool(_lb_data.get("revealed", false))
+	return cfg_rev
+
+
 func _render() -> void:
+	var mode_now: String = _active_mode()
+	var mode_lbl: String = GameConfig.get_mode_label(mode_now)
+	if _title_lbl != null:
+		_title_lbl.text = "PAPAN PERINGKAT — %s" % mode_lbl
+
+	if not _is_results_revealed():
+		if _scope_flow != null:
+			_scope_flow.visible = false
+		_personal_rank_lbl.text = "HASIL %s BELUM DIBUKA" % mode_lbl
+		_personal_detail_lbl.text = "Nilai dan peringkat %s masih disembunyikan. Tunggu Admin membuka (Spill) hasil lalu tekan MUAT ULANG." % mode_lbl
+		_status_lbl.text = "[INFO] Menunggu konfirmasi Admin untuk membuka peringkat %s." % mode_lbl
+		_status_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_INFO)
+
+		for ch: Node in _rows_vbox.get_children():
+			_rows_vbox.remove_child(ch)
+			ch.queue_free()
+
+		var lock_panel := PanelContainer.new()
+		lock_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UiTheme.style_monitor_panel(lock_panel, 18.0)
+		_rows_vbox.add_child(lock_panel)
+
+		var lv := VBoxContainer.new()
+		lv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lv.add_theme_constant_override("separation", 10)
+		lock_panel.add_child(lv)
+
+		var ic := CenterContainer.new()
+		lv.add_child(ic)
+		ic.add_child(UiTheme.make_icon_rect("lock", 40))
+
+		var lh := Label.new()
+		lh.text = "PERINGKAT %s TERKUNCI" % mode_lbl
+		lh.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lh.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		UiTheme.style_pixel_heading(lh, 16, UiTheme.COL_GOLD_BRIGHT, true)
+		lv.add_child(lh)
+
+		var lb_desc := Label.new()
+		lb_desc.text = "Seluruh jawaban siswa sudah terekam dan dihitung otomatis di Google Sheets.\nPeringkat dan nilai baru akan muncul di sini setelah Admin mengaktifkan Spill Hasil di Dashboard Admin."
+		lb_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lb_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lb_desc.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
+		lv.add_child(lb_desc)
+		return
+
+	if _scope_flow != null:
+		_scope_flow.visible = true
 	if not _scope_buttons.has(_active_scope):
 		_active_scope = "overall"
 	for sid: String in _scope_buttons.keys():
@@ -306,6 +386,7 @@ func _render_personal_card() -> void:
 
 func _render_top10_table() -> void:
 	for ch: Node in _rows_vbox.get_children():
+		_rows_vbox.remove_child(ch)
 		ch.queue_free()
 
 	if _lb_status == "LOADING":

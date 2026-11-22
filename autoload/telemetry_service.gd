@@ -3,6 +3,7 @@ extends Node
 
 signal sync_status_changed(status_code: String, message: String)
 signal leaderboard_updated(status: String, data: Dictionary, message: String)
+signal student_check_completed(allowed: bool, exists: bool, message: String, payload: Dictionary)
 
 enum SyncState { NO_URL, INVALID_URL, IDLE, SENDING, SYNCED, OFFLINE_QUEUED }
 
@@ -12,13 +13,20 @@ const MAX_BATCH_SIZE := 25
 var current_state: SyncState = SyncState.IDLE
 var last_message: String = ""
 var cached_leaderboard: Dictionary = {}
+var used_students_by_class: Dictionary = {"PPLGA": {}, "PPLGB": {}}
 var _is_sending: bool = false
 var _in_flight_count: int = 0
 var _is_fetching_lb: bool = false
 var _lb_pending_refresh: bool = false
+var _is_checking_student: bool = false
+var _is_fetching_pub_cfg: bool = false
+var _check_pending_info: Dictionary = {}
 var _active_request: HTTPRequest = null
 var _lb_request: HTTPRequest = null
+var _check_request: HTTPRequest = null
 var _cfg_request: HTTPRequest = null
+var _roster_request: HTTPRequest = null
+var _pub_cfg_request: HTTPRequest = null
 var _retry_timer: Timer = null
 
 
@@ -28,7 +36,10 @@ func _ready() -> void:
 	_refresh_initial_state()
 	if OS.has_feature("web"):
 		_fetch_web_runtime_config()
+		_fetch_web_runtime_roster()
 	elif GameConfig.has_valid_apps_script_url():
+		if DisplayServer.get_name() != "headless":
+			fetch_remote_exam_config()
 		enqueue_unsent_attempt_logs()
 		if not GameSession.pending_telemetry.is_empty():
 			flush_pending_queue()
@@ -79,14 +90,253 @@ func _on_web_config_loaded(
 			var prev_url: String = GameConfig.apps_script_url
 			GameConfig.apply_config_json(text)
 			if prev_url == GameConfig.apps_script_url and GameConfig.has_valid_apps_script_url():
+				if DisplayServer.get_name() != "headless":
+					fetch_remote_exam_config()
 				enqueue_unsent_attempt_logs()
 				if not _is_sending and not GameSession.pending_telemetry.is_empty():
 					flush_pending_queue()
+	elif GameConfig.has_valid_apps_script_url() and DisplayServer.get_name() != "headless":
+		fetch_remote_exam_config()
+
+
+func fetch_remote_exam_config() -> void:
+	if not GameConfig.has_valid_apps_script_url() or DisplayServer.get_name() == "headless":
+		return
+	if _is_fetching_pub_cfg:
+		return
+	_is_fetching_pub_cfg = true
+	if _pub_cfg_request != null and is_instance_valid(_pub_cfg_request):
+		_pub_cfg_request.queue_free()
+	_pub_cfg_request = HTTPRequest.new()
+	_pub_cfg_request.timeout = 10.0
+	add_child(_pub_cfg_request)
+	_pub_cfg_request.request_completed.connect(_on_public_config_loaded, CONNECT_ONE_SHOT)
+	var sep: String = "&" if GameConfig.apps_script_url.contains("?") else "?"
+	var url: String = "%s%saction=public_config&_t=%d" % [
+		GameConfig.apps_script_url,
+		sep,
+		int(Time.get_unix_time_from_system() * 1000.0),
+	]
+	var err: Error = _pub_cfg_request.request(url, PackedStringArray(), HTTPClient.METHOD_GET)
+	if err != OK:
+		_is_fetching_pub_cfg = false
+		_pub_cfg_request.queue_free()
+		_pub_cfg_request = null
+
+
+func _on_public_config_loaded(
+	result: int,
+	response_code: int,
+	_headers: PackedStringArray,
+	body: PackedByteArray
+) -> void:
+	_is_fetching_pub_cfg = false
+	if _pub_cfg_request != null and is_instance_valid(_pub_cfg_request):
+		_pub_cfg_request.queue_free()
+		_pub_cfg_request = null
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 400:
+		return
+	var text: String = body.get_string_from_utf8()
+	var json := JSON.new()
+	if json.parse(text) == OK and json.data is Dictionary:
+		var d := json.data as Dictionary
+		if bool(d.get("ok", false)) and d.get("config") is Dictionary:
+			GameConfig.apply_remote_exam_config(d.get("config") as Dictionary)
+
+
+func _fetch_web_runtime_roster() -> void:
+	# Memungkinkan guru memperbarui docs/students_roster.json tanpa perlu export ulang Godot!
+	if _roster_request != null and is_instance_valid(_roster_request):
+		return
+	_roster_request = HTTPRequest.new()
+	_roster_request.timeout = 6.0
+	add_child(_roster_request)
+	_roster_request.request_completed.connect(_on_web_roster_loaded, CONNECT_ONE_SHOT)
+	var base_url: Variant = JavaScriptBridge.eval("window.location.href.split('?')[0].split('#')[0].replace(/[^\\/]*$/, '') + 'students_roster.json?v=' + Date.now();")
+	if base_url != null and not str(base_url).is_empty():
+		_roster_request.request(str(base_url), PackedStringArray(), HTTPClient.METHOD_GET)
+	else:
+		_roster_request.queue_free()
+		_roster_request = null
+
+
+func _on_web_roster_loaded(
+	result: int,
+	response_code: int,
+	_headers: PackedStringArray,
+	body: PackedByteArray
+) -> void:
+	if _roster_request != null and is_instance_valid(_roster_request):
+		_roster_request.queue_free()
+		_roster_request = null
+	if result == HTTPRequest.RESULT_SUCCESS and response_code >= 200 and response_code < 300:
+		var text: String = body.get_string_from_utf8()
+		if not text.is_empty():
+			GameConfig.apply_roster_json(text)
+
+
+static func _norm_class_key(kelas: String) -> String:
+	var n: String = kelas.strip_edges().to_upper().replace(" ", "")
+	return "PPLGB" if n == "PPLGB" else "PPLGA"
+
+
+func mark_student_used_locally(kelas: String, nama: String, absen: String) -> void:
+	var ck: String = _norm_class_key(kelas)
+	if not used_students_by_class.has(ck):
+		used_students_by_class[ck] = {}
+	var bucket: Dictionary = used_students_by_class[ck] as Dictionary
+	var n_key: String = nama.strip_edges().to_lower()
+	var a_key: String = absen.strip_edges()
+	if not n_key.is_empty():
+		bucket["N:" + n_key] = true
+	if not a_key.is_empty():
+		bucket["A:" + a_key] = true
+
+
+func is_student_marked_used(kelas: String, nama: String, absen: String) -> bool:
+	var ck: String = _norm_class_key(kelas)
+	if not used_students_by_class.has(ck):
+		return false
+	var bucket: Dictionary = used_students_by_class[ck] as Dictionary
+	var n_key: String = nama.strip_edges().to_lower()
+	var a_key: String = absen.strip_edges()
+	if not n_key.is_empty() and bool(bucket.get("N:" + n_key, false)):
+		return true
+	if not a_key.is_empty() and bool(bucket.get("A:" + a_key, false)):
+		return true
+	return false
+
+
+func check_student_eligibility(nama: String, kelas: String, absen: String) -> void:
+	var clean_nama: String = nama.strip_edges()
+	var clean_kelas: String = kelas.strip_edges()
+	var clean_absen: String = absen.strip_edges()
+	var req_mode: String = GameConfig.active_test_mode
+	var meta := {"nama": clean_nama, "kelas": clean_kelas, "absen": clean_absen, "mode": req_mode}
+
+	if not GameConfig.has_valid_apps_script_url():
+		student_check_completed.emit(true, false, "Mode lokal aktif.", meta)
+		return
+
+	if _is_checking_student and _check_request != null and is_instance_valid(_check_request):
+		_check_request.cancel_request()
+		_check_request.queue_free()
+		_check_request = null
+
+	_is_checking_student = true
+	_check_pending_info = meta
+
+	var sep: String = "&" if GameConfig.apps_script_url.contains("?") else "?"
+	var url: String = "%s%saction=check_student&nama=%s&kelas=%s&absen=%s&mode=%s&_t=%d" % [
+		GameConfig.apps_script_url,
+		sep,
+		clean_nama.uri_encode(),
+		clean_kelas.uri_encode(),
+		clean_absen.uri_encode(),
+		req_mode.uri_encode(),
+		int(Time.get_unix_time_from_system() * 1000.0),
+	]
+
+	_check_request = HTTPRequest.new()
+	_check_request.timeout = 12.0
+	add_child(_check_request)
+	_check_request.request_completed.connect(_on_student_check_response, CONNECT_ONE_SHOT)
+
+	var err: Error = _check_request.request(url, PackedStringArray(), HTTPClient.METHOD_GET)
+	if err != OK:
+		_is_checking_student = false
+		student_check_completed.emit(false, false, "Gagal memeriksa data ke Spreadsheet (kode %d). Periksa internet lalu coba lagi." % err, meta)
+
+
+func _on_student_check_response(
+	result: int,
+	response_code: int,
+	_headers: PackedStringArray,
+	body: PackedByteArray
+) -> void:
+	_is_checking_student = false
+	if _check_request != null and is_instance_valid(_check_request):
+		_check_request.queue_free()
+		_check_request = null
+
+	var meta: Dictionary = _check_pending_info.duplicate()
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 400:
+		student_check_completed.emit(
+			false,
+			false,
+			"Gagal memverifikasi nama ke Spreadsheet (HTTP %d). Periksa koneksi internet lalu coba lagi." % response_code,
+			meta
+		)
+		return
+
+	var text: String = body.get_string_from_utf8()
+	var parsed: Dictionary = parse_student_check_json(
+		text,
+		str(meta.get("nama", "")),
+		str(meta.get("absen", ""))
+	)
+	if parsed.is_empty():
+		student_check_completed.emit(
+			false,
+			false,
+			"Respon validasi Spreadsheet tidak valid. Pastikan Apps Script Web App (/exec) aktif.",
+			meta
+		)
+		return
+
+	var remote_cfg: Variant = parsed.get("config", {})
+	if remote_cfg is Dictionary and not (remote_cfg as Dictionary).is_empty():
+		GameConfig.apply_remote_exam_config(remote_cfg as Dictionary)
+
+	var exists: bool = bool(parsed.get("exists", false))
+	var allowed: bool = bool(parsed.get("allowed", not exists))
+	var msg: String = str(parsed.get("message", ""))
+	if exists:
+		mark_student_used_locally(str(meta.get("kelas", "")), str(meta.get("nama", "")), str(meta.get("absen", "")))
+	student_check_completed.emit(allowed, exists, msg, meta)
+
+
+static func parse_student_check_json(raw_json: String, fallback_nama: String = "", fallback_absen: String = "") -> Dictionary:
+	var json := JSON.new()
+	if json.parse(raw_json) != OK or not (json.data is Dictionary):
+		return {}
+	var d := json.data as Dictionary
+	if not bool(d.get("ok", false)):
+		return {}
+
+	var exists: bool = false
+	var allowed: bool = true
+	var msg: String = ""
+	if d.has("exists"):
+		exists = bool(d.get("exists", false))
+		allowed = bool(d.get("allowed", not exists))
+		msg = str(d.get("message", ""))
+	elif d.has("my_info") and d.get("my_info") is Dictionary:
+		# Kompatibilitas dengan deployment Apps Script versi sebelumnya melalui my_info.found
+		var mi: Dictionary = d.get("my_info") as Dictionary
+		exists = bool(mi.get("found", false))
+		allowed = not exists
+
+	if msg.is_empty():
+		if exists:
+			msg = "Nama \"%s\" (Absen %s) sudah dipakai dan tercatat di Spreadsheet. Hubungi guru jika ingin mengulang." % [fallback_nama, fallback_absen]
+		else:
+			msg = "Nama tersedia."
+	return {
+		"ok": true,
+		"mode": str(d.get("mode", "")),
+		"exists": exists,
+		"allowed": allowed,
+		"message": msg,
+		"config": d.get("config", {}) if d.get("config") is Dictionary else {},
+	}
 
 
 func _on_config_reloaded() -> void:
 	_refresh_initial_state()
 	if GameConfig.has_valid_apps_script_url():
+		if DisplayServer.get_name() != "headless":
+			fetch_remote_exam_config()
 		enqueue_unsent_attempt_logs()
 		if GameSession.has_active_session():
 			var summary_payload: Dictionary = GameSession.build_session_summary_payload("SESSION_SYNC")
@@ -181,6 +431,7 @@ func sync_session_now(include_finish: bool = true) -> void:
 func _build_level_log_payload(entry: Dictionary) -> Dictionary:
 	var payload: Dictionary = entry.duplicate(true)
 	payload["event"] = "LEVEL_LOG"
+	payload["test_mode"] = GameSession.test_mode
 	var summary: Dictionary = GameSession.build_session_summary_payload("LEVEL_LOG")
 	payload["skor_mg1"] = summary["skor_mg1"]
 	payload["skor_mg2"] = summary["skor_mg2"]
@@ -370,13 +621,16 @@ func fetch_leaderboard(force: bool = false) -> void:
 
 	_is_fetching_lb = true
 	leaderboard_updated.emit("LOADING", cached_leaderboard, "Mengambil papan peringkat terbaru dari Google Sheets...")
+	var mode_q: String = GameSession.test_mode if GameSession.has_active_session() else GameConfig.active_test_mode
 	var sep: String = "&" if GameConfig.apps_script_url.contains("?") else "?"
-	var url: String = "%s%saction=leaderboard&nama=%s&kelas=%s&absen=%s" % [
+	var url: String = "%s%saction=leaderboard&nama=%s&kelas=%s&absen=%s&mode=%s&_t=%d" % [
 		GameConfig.apps_script_url,
 		sep,
 		GameSession.nama.uri_encode(),
 		GameSession.kelas.uri_encode(),
-		GameSession.absen.uri_encode()
+		GameSession.absen.uri_encode(),
+		mode_q.uri_encode(),
+		int(Time.get_unix_time_from_system() * 1000.0),
 	]
 
 	if _lb_request != null and is_instance_valid(_lb_request):
@@ -411,8 +665,15 @@ func _on_leaderboard_completed(
 		if parsed.is_empty():
 			leaderboard_updated.emit("ERROR", cached_leaderboard, "Format balasan Leaderboard tidak valid. Pastikan URL mengarah ke Apps Script Web App (/exec).")
 		else:
+			var remote_cfg: Variant = parsed.get("config", {})
+			if remote_cfg is Dictionary and not (remote_cfg as Dictionary).is_empty():
+				GameConfig.apply_remote_exam_config(remote_cfg as Dictionary)
 			cached_leaderboard = parsed
-			leaderboard_updated.emit("LOADED", parsed, "Diperbarui otomatis dari Google Sheets.")
+			_sync_used_students_from_payload(parsed)
+			var status_msg: String = str(parsed.get("message", ""))
+			if status_msg.is_empty():
+				status_msg = "Diperbarui otomatis dari Google Sheets."
+			leaderboard_updated.emit("LOADED", parsed, status_msg)
 
 	if _lb_pending_refresh:
 		_lb_pending_refresh = false
@@ -428,6 +689,11 @@ static func parse_leaderboard_json(raw_json: String) -> Dictionary:
 		return {}
 	return {
 		"ok": true,
+		"mode": str(d.get("mode", "")),
+		"has_revealed_flag": d.has("revealed"),
+		"revealed": bool(d.get("revealed", true)),
+		"message": str(d.get("message", "")),
+		"config": d.get("config", {}) if d.get("config") is Dictionary else {},
 		"updated_at": str(d.get("updated_at", "")),
 		"total_overall": int(d.get("total_overall", 0)),
 		"total_pplga": int(d.get("total_pplga", 0)),
@@ -435,8 +701,45 @@ static func parse_leaderboard_json(raw_json: String) -> Dictionary:
 		"overall_top10": _sanitize_rows(d.get("overall_top10", [])),
 		"pplga_top10": _sanitize_rows(d.get("pplga_top10", [])),
 		"pplgb_top10": _sanitize_rows(d.get("pplgb_top10", [])),
+		"used_students": d.get("used_students", {}) if d.get("used_students") is Dictionary else {},
 		"my_info": _sanitize_my_info(d.get("my_info", {})),
 	}
+
+
+func _sync_used_students_from_payload(parsed: Dictionary) -> void:
+	var fresh_map: Dictionary = {"PPLGA": {}, "PPLGB": {}}
+	var raw_used: Variant = parsed.get("used_students", {})
+	if raw_used is Dictionary and not (raw_used as Dictionary).is_empty():
+		for cls_k: Variant in (raw_used as Dictionary).keys():
+			var ck: String = _norm_class_key(str(cls_k))
+			var bucket: Dictionary = fresh_map[ck] as Dictionary
+			var arr_v: Variant = (raw_used as Dictionary)[cls_k]
+			if arr_v is Array:
+				for item: Variant in arr_v as Array:
+					if item is Dictionary:
+						var it := item as Dictionary
+						var nk: String = str(it.get("nama", "")).strip_edges().to_lower()
+						var ak: String = str(it.get("absen", "")).strip_edges()
+						if not nk.is_empty():
+							bucket["N:" + nk] = true
+						if not ak.is_empty():
+							bucket["A:" + ak] = true
+	else:
+		# Fallback saat Apps Script versi lama belum mengirim used_students: isi dari top10 yang tersedia
+		for pair: Array in [["pplga_top10", "PPLGA"], ["pplgb_top10", "PPLGB"]]:
+			var bucket: Dictionary = fresh_map[str(pair[1])] as Dictionary
+			var rows: Variant = parsed.get(str(pair[0]), [])
+			if rows is Array:
+				for r: Variant in rows as Array:
+					if r is Dictionary:
+						var rd := r as Dictionary
+						var nk: String = str(rd.get("nama", "")).strip_edges().to_lower()
+						var ak: String = str(rd.get("absen", "")).strip_edges()
+						if not nk.is_empty():
+							bucket["N:" + nk] = true
+						if not ak.is_empty():
+							bucket["A:" + ak] = true
+	used_students_by_class = fresh_map
 
 
 static func _sanitize_rows(raw_val: Variant) -> Array[Dictionary]:
@@ -487,9 +790,13 @@ func build_local_leaderboard_fallback() -> Dictionary:
 			sum_s += scores_arr[i]
 			active_cnt += 1
 	var avg: float = float(sum_s) / float(maxi(1, active_cnt))
+	var active_m: String = GameSession.test_mode if GameSession.has_active_session() else GameConfig.active_test_mode
 	return {
 		"ok": true,
 		"local_only": true,
+		"mode": active_m,
+		"has_revealed_flag": true,
+		"revealed": GameConfig.is_results_revealed_for(active_m),
 		"total_overall": 0,
 		"total_pplga": 0,
 		"total_pplgb": 0,

@@ -10,7 +10,7 @@ const STAGE_ICONS: Dictionary[String, String] = {
 }
 
 const STAGE_LABELS: Dictionary[String, String] = {
-	"mg1": "STAGE 1: Debugger Sintaks",
+	"mg1": "STAGE 1: Lengkapi Perintah DOS",
 	"mg2": "STAGE 2: Rakit Flowchart",
 	"mg3": "STAGE 3: Filter Wildcard",
 	"mg4": "STAGE 4: Labirin Folder",
@@ -43,13 +43,29 @@ func _ready() -> void:
 	_build_ui()
 	TelemetryService.sync_status_changed.connect(_on_sync_changed)
 	TelemetryService.leaderboard_updated.connect(_on_leaderboard_updated)
+	GameConfig.exam_config_updated.connect(_on_exam_config_updated)
 	AudioManager.mute_changed.connect(_on_mute_changed)
 	get_viewport().size_changed.connect(_on_resized)
 	_on_resized()
 	_refresh_summary()
+	if DisplayServer.get_name() != "headless" and GameConfig.has_valid_apps_script_url():
+		TelemetryService.fetch_remote_exam_config()
 	TelemetryService.fetch_leaderboard()
-	if _first_action_btn != null and is_instance_valid(_first_action_btn):
+	if _first_action_btn != null and is_instance_valid(_first_action_btn) and not _first_action_btn.disabled:
 		_first_action_btn.grab_focus()
+	elif _rep_btn != null and is_instance_valid(_rep_btn):
+		_rep_btn.grab_focus()
+
+
+func _exit_tree() -> void:
+	if TelemetryService.sync_status_changed.is_connected(_on_sync_changed):
+		TelemetryService.sync_status_changed.disconnect(_on_sync_changed)
+	if TelemetryService.leaderboard_updated.is_connected(_on_leaderboard_updated):
+		TelemetryService.leaderboard_updated.disconnect(_on_leaderboard_updated)
+	if GameConfig.exam_config_updated.is_connected(_on_exam_config_updated):
+		GameConfig.exam_config_updated.disconnect(_on_exam_config_updated)
+	if AudioManager.mute_changed.is_connected(_on_mute_changed):
+		AudioManager.mute_changed.disconnect(_on_mute_changed)
 
 
 func _build_ui() -> void:
@@ -210,6 +226,20 @@ func _build_ui() -> void:
 	_stage5_slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_v.add_child(_stage5_slot)
 
+	_rebuild_stage_cards()
+
+
+func _rebuild_stage_cards() -> void:
+	if _stages_grid == null or _stage5_slot == null:
+		return
+	for ch: Node in _stages_grid.get_children():
+		_stages_grid.remove_child(ch)
+		ch.queue_free()
+	for ch: Node in _stage5_slot.get_children():
+		_stage5_slot.remove_child(ch)
+		ch.queue_free()
+	_first_action_btn = null
+
 	var metas: Array[Dictionary] = LevelsCatalog.get_minigames_meta()
 	var next_highlighted: bool = false
 	for i: int in range(metas.size()):
@@ -292,29 +322,46 @@ func _create_stage_card(meta: Dictionary, is_next: bool) -> PanelContainer:
 	stat_v.add_theme_constant_override("separation", 4)
 	bottom_row.add_child(stat_v)
 
-	stat_v.add_child(UiTheme.make_star_row(score_val, done, 24))
+	var revealed: bool = GameConfig.is_results_revealed_for(GameSession.test_mode)
+	if revealed:
+		stat_v.add_child(UiTheme.make_star_row(score_val, done, 24))
 
 	var score_lbl := Label.new()
-	var status_tag: String = "[SELESAI]" if done else ("[%d/%d]" % [lv_done, lv_total] if lv_done > 0 else "[BARU]")
-	score_lbl.text = "Skor: %d/100  %s" % [score_val, status_tag]
+	if revealed:
+		var status_tag: String = "[SELESAI]" if done else ("[%d/%d]" % [lv_done, lv_total] if lv_done > 0 else "[BARU]")
+		score_lbl.text = "Skor: %d/100  %s" % [score_val, status_tag]
+	else:
+		if done:
+			score_lbl.text = "Status: SELESAI (Jawaban Tersimpan)"
+		elif lv_done > 0:
+			score_lbl.text = "Progres: %d/%d Soal Terkirim" % [lv_done, lv_total]
+		else:
+			score_lbl.text = "Status: BELUM DIKERJAKAN"
+	score_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	score_lbl.add_theme_font_size_override("font_size", 14)
 	score_lbl.add_theme_color_override("font_color", UiTheme.COL_INK_SUCCESS if done else UiTheme.COL_INK_SECONDARY)
 	stat_v.add_child(score_lbl)
 
 	var play_btn := Button.new()
-	play_btn.text = "ULANG" if done else "MAIN"
 	play_btn.custom_minimum_size = Vector2(124.0, 50.0)
-	if is_next:
-		UiTheme.style_gold_button(play_btn, "play", true)
+	if done:
+		play_btn.text = "SELESAI"
+		play_btn.disabled = true
+		play_btn.tooltip_text = "Stage ini sudah selesai dikerjakan."
+		UiTheme.style_blue_button(play_btn, "", true)
 	else:
-		UiTheme.style_blue_button(play_btn, "" if done else "play", true)
-	play_btn.pressed.connect(func() -> void:
-		AudioManager.play_click()
-		SceneRouter.start_minigame(mg_id)
-	)
+		play_btn.text = "LANJUT" if lv_done > 0 else "MAIN"
+		if is_next:
+			UiTheme.style_gold_button(play_btn, "play", true)
+		else:
+			UiTheme.style_blue_button(play_btn, "play", true)
+		play_btn.pressed.connect(func() -> void:
+			AudioManager.play_click()
+			SceneRouter.start_minigame(mg_id)
+		)
 	bottom_row.add_child(play_btn)
 
-	if _first_action_btn == null and (is_next or mg_id == "mg1"):
+	if _first_action_btn == null and not done and (is_next or mg_id == "mg1"):
 		_first_action_btn = play_btn
 
 	return card
@@ -323,10 +370,19 @@ func _create_stage_card(meta: Dictionary, is_next: bool) -> PanelContainer:
 func _refresh_summary() -> void:
 	var shown_nama: String = GameSession.nama if not GameSession.nama.is_empty() else "Tamu"
 	var shown_kelas: String = GameSession.kelas if not GameSession.kelas.is_empty() else "PPLG"
-	_identity_lbl.text = "%s (%s)" % [shown_nama, shown_kelas]
+	var mode_lbl: String = GameConfig.get_mode_label(GameSession.test_mode)
+	_identity_lbl.text = "[%s] %s (%s)" % [mode_lbl, shown_nama, shown_kelas]
+	if _book_btn != null:
+		_book_btn.visible = GameConfig.is_materi_allowed_for(GameSession.test_mode)
 
 	var done_cnt: int = GameSession.get_completed_minigame_count()
 	_progress_bar.value = float(done_cnt)
+
+	var revealed: bool = GameConfig.is_results_revealed_for(GameSession.test_mode)
+	if not revealed:
+		_personal_rank_lbl.text = "Mode %s — Nilai Menunggu Dibuka Admin" % mode_lbl
+		_personal_stats_lbl.text = "Progres: %d/5 Stage selesai  |  Nilai & peringkat disembunyikan sampai di-spill Admin." % done_cnt
+		return
 
 	var local_avg: float = float(GameSession.get_total_score()) / 5.0
 	var lb: Dictionary = TelemetryService.cached_leaderboard
@@ -347,6 +403,13 @@ func _refresh_summary() -> void:
 	else:
 		_personal_rank_lbl.text = "Kamu rank - dari - Peserta"
 		_personal_stats_lbl.text = "Rata-rata: %.1f  |  Progres: %d/5 Stage" % [local_avg, done_cnt]
+
+
+func _on_exam_config_updated() -> void:
+	if not is_inside_tree():
+		return
+	_refresh_summary()
+	_rebuild_stage_cards()
 
 
 func _refresh_sfx_btn() -> void:

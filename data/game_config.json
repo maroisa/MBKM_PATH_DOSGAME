@@ -7,8 +7,16 @@
     "PPLG A",
     "PPLG B"
   ],
-  "allow_retry": true,
+  "active_test_mode": "PRETEST",
+  "exam_blind_mode": true,
+  "reveal_pretest_results": false,
+  "reveal_posttest_results": false,
+  "allow_materi_pretest": false,
+  "allow_materi_posttest": false,
+  "allow_retry": false,
   "retry_penalty_per_mistake": 10,
-  "min_score_on_solve": 40,
+  "min_score_on_solve": 10,
+  "level_time_limit_sec": 30,
+  "time_grace_sec": 10,
   "hint_after_mistakes": 2
 }
