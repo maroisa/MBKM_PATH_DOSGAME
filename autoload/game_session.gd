@@ -5,9 +5,12 @@ signal session_updated
 
 const SAVE_VERSION := 1
 const DEFAULT_SAVE_PATH := "user://dos_rescue_save.json"
+const DEFAULT_PROFILES_PATH := "user://dos_rescue_profiles.json"
 const MG_IDS: Array[String] = ["mg1", "mg2", "mg3", "mg4", "mg5"]
 
 var save_path: String = DEFAULT_SAVE_PATH
+var profiles_path: String = DEFAULT_PROFILES_PATH
+var saved_profiles: Dictionary = {}
 
 var session_id: String = ""
 var test_mode: String = "PRETEST"
@@ -29,7 +32,72 @@ var synced_log_count: int = 0
 
 
 func _ready() -> void:
+	_load_profiles_from_disk()
 	load_from_disk()
+	if has_active_session():
+		var k: String = build_profile_key(kelas, nama, test_mode)
+		if not saved_profiles.has(k):
+			saved_profiles[k] = capture_state()
+			_save_profiles_to_disk()
+
+
+static func build_profile_key(p_kelas: String, p_nama: String, p_mode: String = "") -> String:
+	var norm_m: String = GameConfig.normalize_test_mode(p_mode if not p_mode.is_empty() else GameConfig.active_test_mode)
+	var norm_c: String = p_kelas.strip_edges().to_upper().replace(" ", "")
+	var cls_code: String = "PPLGB" if norm_c == "PPLGB" else "PPLGA"
+	var norm_n: String = p_nama.strip_edges().to_lower()
+	return "%s|%s|%s" % [norm_m, cls_code, norm_n]
+
+
+func matches_active_student(p_kelas: String, p_nama: String, p_mode: String = "") -> bool:
+	if not has_active_session():
+		return false
+	return build_profile_key(kelas, nama, test_mode) == build_profile_key(p_kelas, p_nama, p_mode)
+
+
+func has_saved_session_for(p_kelas: String, p_nama: String, _p_absen: String = "", p_mode: String = "") -> bool:
+	if p_nama.strip_edges().is_empty():
+		return false
+	if matches_active_student(p_kelas, p_nama, p_mode):
+		return true
+	var k: String = build_profile_key(p_kelas, p_nama, p_mode)
+	return saved_profiles.has(k) and (saved_profiles[k] is Dictionary)
+
+
+func get_saved_completed_count_for(p_kelas: String, p_nama: String, p_mode: String = "") -> int:
+	if matches_active_student(p_kelas, p_nama, p_mode):
+		return get_completed_minigame_count()
+	var k: String = build_profile_key(p_kelas, p_nama, p_mode)
+	if not saved_profiles.has(k) or not (saved_profiles[k] is Dictionary):
+		return 0
+	var prof: Dictionary = saved_profiles[k] as Dictionary
+	var raw_comp: Variant = prof.get("mg_completed", {})
+	if not (raw_comp is Dictionary):
+		return 0
+	var cnt: int = 0
+	for mg_id: String in MG_IDS:
+		if bool((raw_comp as Dictionary).get(mg_id, false)):
+			cnt += 1
+	return cnt
+
+
+func resume_saved_session_for(p_kelas: String, p_nama: String, p_mode: String = "") -> bool:
+	if matches_active_student(p_kelas, p_nama, p_mode):
+		return true
+	var k: String = build_profile_key(p_kelas, p_nama, p_mode)
+	if not saved_profiles.has(k) or not (saved_profiles[k] is Dictionary):
+		return false
+	apply_state((saved_profiles[k] as Dictionary).duplicate(true))
+	save_to_disk()
+	session_updated.emit()
+	return true
+
+
+func forget_saved_profile_for(p_kelas: String, p_nama: String, p_mode: String = "") -> void:
+	var k: String = build_profile_key(p_kelas, p_nama, p_mode)
+	if saved_profiles.has(k):
+		saved_profiles.erase(k)
+		_save_profiles_to_disk()
 
 
 func has_active_session() -> bool:
@@ -59,7 +127,7 @@ func start_new_session(p_nama: String, p_kelas: String, p_absen: String, p_mode:
 	session_updated.emit()
 
 
-func clear_session() -> void:
+func clear_session(wipe_profiles: bool = false) -> void:
 	session_id = ""
 	test_mode = GameConfig.active_test_mode
 	nama = ""
@@ -76,6 +144,9 @@ func clear_session() -> void:
 	attempt_logs.clear()
 	pending_telemetry.clear()
 	synced_log_count = 0
+	if wipe_profiles:
+		saved_profiles.clear()
+		_save_profiles_to_disk()
 	save_to_disk()
 	session_updated.emit()
 
@@ -270,7 +341,32 @@ func apply_state(data: Dictionary) -> void:
 
 func save_to_disk(target_path: String = "") -> Error:
 	var path: String = target_path if not target_path.is_empty() else save_path
-	return save_atomic(path, capture_state())
+	var snap: Dictionary = capture_state()
+	if target_path.is_empty() and has_active_session():
+		saved_profiles[build_profile_key(kelas, nama, test_mode)] = snap.duplicate(true)
+		_save_profiles_to_disk()
+	return save_atomic(path, snap)
+
+
+func _save_profiles_to_disk() -> void:
+	var wrapper: Dictionary = {
+		"version": SAVE_VERSION,
+		"profiles": saved_profiles,
+	}
+	save_atomic(profiles_path, wrapper)
+
+
+func _load_profiles_from_disk() -> void:
+	saved_profiles.clear()
+	var data: Dictionary = load_atomic(profiles_path)
+	if data.is_empty():
+		return
+	var raw_p: Variant = data.get("profiles", {})
+	if raw_p is Dictionary:
+		for k: Variant in (raw_p as Dictionary).keys():
+			var item: Variant = (raw_p as Dictionary)[k]
+			if item is Dictionary:
+				saved_profiles[str(k)] = (item as Dictionary).duplicate(true)
 
 
 func load_from_disk(target_path: String = "") -> bool:

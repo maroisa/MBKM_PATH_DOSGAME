@@ -6,8 +6,6 @@ var _margin: MarginContainer
 var _scroll: TouchScrollContainer
 var _center_pad: MarginContainer
 var _kb_spacer: Control
-var _resume_panel: PanelContainer
-var _resume_btn: Button
 var _mode_banner_panel: PanelContainer
 var _mode_banner_title_lbl: Label
 var _mode_banner_sub_lbl: Label
@@ -68,7 +66,6 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_on_resized)
 	_on_resized()
 	_refresh_exam_mode_ui()
-	_refresh_resume_state()
 	_refresh_kelas_buttons()
 	_refresh_identity_mode()
 	if is_instance_valid(_start_btn):
@@ -185,26 +182,6 @@ func _build_ui() -> void:
 	_mode_banner_sub_lbl.add_theme_color_override("font_color", UiTheme.COL_TEXT_SECONDARY)
 	mb_v.add_child(_mode_banner_sub_lbl)
 
-	# Banner Sesi Tersimpan (muncul hanya jika ada sesi aktif yang belum selesai)
-	_resume_panel = PanelContainer.new()
-	_resume_panel.visible = false
-	_resume_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UiTheme.style_gold_panel(_resume_panel, 10.0)
-	col.add_child(_resume_panel)
-
-	_resume_btn = Button.new()
-	_resume_btn.text = "LANJUTKAN"
-	_resume_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_resume_btn.clip_text = true
-	_resume_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	UiTheme.style_blue_button(_resume_btn, "play", false)
-	_resume_btn.custom_minimum_size = Vector2(0.0, UiTheme.MIN_TAP_HEIGHT)
-	_resume_btn.pressed.connect(func() -> void:
-		AudioManager.play_click()
-		SceneRouter.go_to_hub()
-	)
-	_resume_panel.add_child(_resume_btn)
-
 	# Kartu Utama: Form Identitas Peserta
 	var form_card := PanelContainer.new()
 	form_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -310,6 +287,7 @@ func _build_ui() -> void:
 	_nama_input.gui_input.connect(_on_input_gui_input.bind(_nama_input))
 	_nama_input.text_changed.connect(func(_t: String) -> void:
 		_mark_user_editing(_nama_input)
+		_refresh_start_button_label()
 	)
 	_nama_input.text_submitted.connect(func(_t: String) -> void:
 		if is_instance_valid(_absen_input):
@@ -410,12 +388,7 @@ func _build_dropdown_overlay() -> void:
 	_dropdown_backdrop.color = Color(0.06, 0.08, 0.12, 0.86)
 	_dropdown_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_dropdown_backdrop.visible = false
-	_dropdown_backdrop.gui_input.connect(func(ev: InputEvent) -> void:
-		if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed:
-			_close_student_dropdown()
-		elif ev is InputEventScreenTouch and (ev as InputEventScreenTouch).pressed:
-			_close_student_dropdown()
-	)
+	_dropdown_backdrop.gui_input.connect(_on_dropdown_backdrop_gui_input)
 	add_child(_dropdown_backdrop)
 
 	var center_box := CenterContainer.new()
@@ -425,6 +398,12 @@ func _build_dropdown_overlay() -> void:
 
 	_dropdown_panel = PanelContainer.new()
 	_dropdown_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_dropdown_panel.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton:
+			var mb := ev as InputEventMouseButton
+			if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN or mb.button_index == MOUSE_BUTTON_WHEEL_LEFT or mb.button_index == MOUSE_BUTTON_WHEEL_RIGHT:
+				_dropdown_panel.accept_event()
+	)
 	UiTheme.style_gold_panel(_dropdown_panel, 14.0)
 	center_box.add_child(_dropdown_panel)
 
@@ -543,13 +522,46 @@ func _update_dropdown_trigger_display() -> void:
 		var s_nis: String = str(_selected_student.get("nis", ""))
 		_student_dropdown_btn.text = "%02d - %s" % [abs_n, s_nama]
 		_style_dropdown_trigger(_student_dropdown_btn, true)
+		var can_resume: bool = GameSession.has_saved_session_for(_selected_kelas, s_nama, str(abs_n), GameConfig.active_test_mode)
 		var is_used: bool = TelemetryService.is_student_marked_used(_selected_kelas, s_nama, str(abs_n))
-		if is_used:
+		if can_resume:
+			var done_c: int = GameSession.get_saved_completed_count_for(_selected_kelas, s_nama, GameConfig.active_test_mode)
+			_selected_meta_lbl.text = "[LANJUTKAN %d/5] Absen %02d | Progres %s tersimpan di perangkat ini." % [done_c, abs_n, GameConfig.get_mode_label()]
+			_selected_meta_lbl.add_theme_color_override("font_color", UiTheme.COL_SUCCESS)
+		elif is_used:
 			_selected_meta_lbl.text = "[TERPAKAI] Absen %02d | NIS %s — Sudah tercatat di Spreadsheet." % [abs_n, s_nis]
 			_selected_meta_lbl.add_theme_color_override("font_color", UiTheme.COL_ERROR)
 		else:
 			_selected_meta_lbl.text = "Absen: %02d  |  NIS: %s  |  Kelas: %s" % [abs_n, s_nis, _selected_kelas]
 			_selected_meta_lbl.add_theme_color_override("font_color", UiTheme.COL_INFO)
+	_refresh_start_button_label()
+
+
+func _is_point_inside_dropdown_panel(global_pt: Vector2) -> bool:
+	if _dropdown_panel == null or not is_instance_valid(_dropdown_panel):
+		return false
+	return _dropdown_panel.get_global_rect().has_point(global_pt)
+
+
+func _on_dropdown_backdrop_gui_input(ev: InputEvent) -> void:
+	if not _dropdown_open:
+		return
+	if ev is InputEventMouseButton:
+		var mb := ev as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN or mb.button_index == MOUSE_BUTTON_WHEEL_LEFT or mb.button_index == MOUSE_BUTTON_WHEEL_RIGHT:
+			_dropdown_backdrop.accept_event()
+			return
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			if not _is_point_inside_dropdown_panel(mb.global_position):
+				_dropdown_backdrop.accept_event()
+				_close_student_dropdown()
+	elif ev is InputEventScreenTouch:
+		var st := ev as InputEventScreenTouch
+		if st.pressed:
+			var g_pt: Vector2 = _dropdown_backdrop.get_global_transform() * st.position
+			if not _is_point_inside_dropdown_panel(g_pt):
+				_dropdown_backdrop.accept_event()
+				_close_student_dropdown()
 
 
 func _open_student_dropdown() -> void:
@@ -558,10 +570,14 @@ func _open_student_dropdown() -> void:
 	AudioManager.play_modal_open()
 	_dropdown_open = true
 	_dropdown_search.text = ""
+	if _dropdown_scroll != null:
+		_dropdown_scroll.scroll_vertical = 0
 	var roster: Array[Dictionary] = GameConfig.get_students_for_class(_selected_kelas)
 	_dropdown_title_lbl.text = "PILIH SISWA — %s (%d)" % [_selected_kelas, roster.size()]
 	_populate_dropdown_items("")
 	_dropdown_backdrop.visible = true
+	if _margin != null:
+		_margin.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
 	if _dropdown_arrow_lbl != null:
 		_dropdown_arrow_lbl.text = "^"
 	_update_dropdown_panel_size()
@@ -576,6 +592,8 @@ func _close_student_dropdown() -> void:
 	AudioManager.play_modal_close()
 	_dropdown_open = false
 	_dropdown_backdrop.visible = false
+	if _margin != null:
+		_margin.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_INHERITED
 	if _dropdown_arrow_lbl != null:
 		_dropdown_arrow_lbl.text = "v"
 	if is_instance_valid(_student_dropdown_btn):
@@ -604,6 +622,7 @@ func _populate_dropdown_items(query: String) -> void:
 				continue
 		shown_count += 1
 		var is_sel: bool = (abs_n == sel_absen and not _selected_student.is_empty())
+		var can_resume: bool = GameSession.has_saved_session_for(_selected_kelas, s_nama, str(abs_n), GameConfig.active_test_mode)
 		var is_used: bool = TelemetryService.is_student_marked_used(_selected_kelas, s_nama, str(abs_n))
 
 		var row_btn := Button.new()
@@ -614,10 +633,24 @@ func _populate_dropdown_items(query: String) -> void:
 		row_btn.custom_minimum_size = Vector2(140.0, UiTheme.MIN_TAP_HEIGHT)
 		row_btn.add_theme_font_override("font", mono)
 		row_btn.add_theme_font_size_override("font_size", 14)
-		row_btn.text = "[%02d] %s%s" % [abs_n, s_nama, "  [TERPAKAI]" if is_used else ""]
+		var tag_txt: String = ""
+		if can_resume:
+			var done_c: int = GameSession.get_saved_completed_count_for(_selected_kelas, s_nama, GameConfig.active_test_mode)
+			tag_txt = "  [LANJUT %d/5]" % done_c
+		elif is_used:
+			tag_txt = "  [TERPAKAI]"
+		row_btn.text = "[%02d] %s%s" % [abs_n, s_nama, tag_txt]
 
 		if is_sel:
 			UiTheme.style_chip_button(row_btn, true)
+		elif can_resume:
+			row_btn.add_theme_stylebox_override("normal", UiTheme.make_box(UiTheme.COL_SUCCESS_BG, UiTheme.COL_SUCCESS, 2, 0, 10))
+			row_btn.add_theme_stylebox_override("hover", UiTheme.make_box(Color("#1A3E2B"), UiTheme.COL_GOLD_BRIGHT, 2, 0, 10))
+			row_btn.add_theme_stylebox_override("pressed", UiTheme.make_box(UiTheme.COL_SUCCESS_BG, UiTheme.COL_GOLD, 2, 0, 10))
+			row_btn.add_theme_stylebox_override("focus", UiTheme.make_focus_box())
+			row_btn.add_theme_color_override("font_color", UiTheme.COL_SUCCESS)
+			row_btn.add_theme_color_override("font_hover_color", UiTheme.COL_WHITE)
+			UiTheme.attach_button_feel(row_btn)
 		elif is_used:
 			row_btn.add_theme_stylebox_override("normal", UiTheme.make_box(UiTheme.COL_ERROR_BG, UiTheme.COL_ERROR, 2, 0, 10))
 			row_btn.add_theme_stylebox_override("hover", UiTheme.make_box(Color("#4E1C2D"), UiTheme.COL_ERROR, 2, 0, 10))
@@ -646,13 +679,18 @@ func _on_student_picked(student: Dictionary) -> void:
 	AudioManager.play_block_place()
 	_dropdown_open = false
 	_dropdown_backdrop.visible = false
+	if _margin != null:
+		_margin.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_INHERITED
 	if _dropdown_arrow_lbl != null:
 		_dropdown_arrow_lbl.text = "v"
 	_error_panel.visible = false
 	_update_dropdown_trigger_display()
 	var s_nama: String = str(_selected_student.get("nama", ""))
 	var s_absen: String = str(int(_selected_student.get("absen", 0)))
-	if TelemetryService.is_student_marked_used(_selected_kelas, s_nama, s_absen):
+	if GameSession.has_saved_session_for(_selected_kelas, s_nama, s_absen, GameConfig.active_test_mode):
+		var done_c: int = GameSession.get_saved_completed_count_for(_selected_kelas, s_nama, GameConfig.active_test_mode)
+		_show_info("Sesi %s untuk \"%s\" (%d/5 Stage) ditemukan di perangkat ini. Tekan LANJUTKAN MAIN untuk masuk." % [GameConfig.get_mode_label(), s_nama, done_c])
+	elif TelemetryService.is_student_marked_used(_selected_kelas, s_nama, s_absen):
 		_show_error("Nama \"%s\" (Absen %s) sudah dipakai di Spreadsheet. Hubungi guru jika ingin mengulang." % [s_nama, s_absen])
 	if is_instance_valid(_start_btn):
 		_start_btn.grab_focus()
@@ -860,11 +898,12 @@ func _on_exam_config_updated() -> void:
 	if not is_inside_tree():
 		return
 	_refresh_exam_mode_ui()
-	_refresh_resume_state()
 	if GameConfig.has_roster_for_class(_selected_kelas):
 		_update_dropdown_trigger_display()
 		if _dropdown_open:
 			_populate_dropdown_items(_dropdown_search.text)
+	else:
+		_refresh_start_button_label()
 	if DisplayServer.get_name() != "headless" and GameConfig.has_valid_apps_script_url():
 		if _last_fetched_mode != GameConfig.active_test_mode:
 			_last_fetched_mode = GameConfig.active_test_mode
@@ -887,13 +926,18 @@ func _refresh_exam_mode_ui() -> void:
 		_book_btn.visible = GameConfig.is_materi_allowed_for()
 
 
-func _refresh_resume_state() -> void:
-	if GameSession.has_active_session() and GameSession.test_mode == GameConfig.active_test_mode:
-		var done_cnt: int = GameSession.get_completed_minigame_count()
-		_resume_panel.visible = true
-		_resume_btn.text = "LANJUTKAN %s: %s (%d/5)" % [GameConfig.get_mode_label(GameSession.test_mode), GameSession.nama, done_cnt]
+func _refresh_start_button_label() -> void:
+	if _start_btn == null or _is_verifying_login:
+		return
+	var nama_cand: String = ""
+	if GameConfig.has_roster_for_class(_selected_kelas):
+		nama_cand = str(_selected_student.get("nama", "")).strip_edges()
+	elif _nama_input != null:
+		nama_cand = _nama_input.text.strip_edges()
+	if not nama_cand.is_empty() and GameSession.has_saved_session_for(_selected_kelas, nama_cand, "", GameConfig.active_test_mode):
+		_start_btn.text = "LANJUTKAN MAIN"
 	else:
-		_resume_panel.visible = false
+		_start_btn.text = "MULAI MAIN"
 
 
 func _on_select_kelas(cls_name: String) -> void:
@@ -981,6 +1025,10 @@ func _on_start_pressed() -> void:
 		TelemetryService.check_student_eligibility(nama_val, _selected_kelas, absen_str)
 		return
 
+	if GameSession.has_saved_session_for(_selected_kelas, nama_val, absen_str, GameConfig.active_test_mode):
+		_resume_verified_session(nama_val, _selected_kelas, GameConfig.active_test_mode)
+		return
+
 	_begin_verified_session(nama_val, _selected_kelas, absen_str)
 
 
@@ -990,15 +1038,25 @@ func _on_student_check_completed(allowed: bool, exists: bool, message: String, p
 	_is_verifying_login = false
 	if is_instance_valid(_start_btn):
 		_start_btn.disabled = false
-		_start_btn.text = "MULAI MAIN"
+		_refresh_start_button_label()
+
+	var p_nama: String = str(payload.get("nama", ""))
+	var p_kelas: String = str(payload.get("kelas", _selected_kelas))
+	var p_absen: String = str(payload.get("absen", ""))
+	var p_mode: String = str(payload.get("mode", GameConfig.active_test_mode))
 
 	if not allowed:
+		# Jika nama sudah tercatat di Spreadsheet DAN perangkat ini punya sesi tersimpan untuk siswa & mode yang sama,
+		# otomatis lanjutkan progres terakhirnya tanpa mengulang dari awal!
+		if exists and GameSession.has_saved_session_for(p_kelas, p_nama, p_absen, p_mode):
+			_resume_verified_session(p_nama, p_kelas, p_mode)
+			return
 		var err_txt: String = message
 		if err_txt.is_empty():
 			if exists:
 				err_txt = "Nama \"%s\" (Absen %s) sudah dipakai dan tercatat di Spreadsheet. Hubungi guru jika ingin mengulang." % [
-					str(payload.get("nama", "")),
-					str(payload.get("absen", "")),
+					p_nama,
+					p_absen,
 				]
 			else:
 				err_txt = "Gagal memverifikasi nama ke Spreadsheet. Periksa koneksi lalu coba lagi."
@@ -1006,11 +1064,15 @@ func _on_student_check_completed(allowed: bool, exists: bool, message: String, p
 		_update_dropdown_trigger_display()
 		return
 
-	_begin_verified_session(
-		str(payload.get("nama", "")),
-		str(payload.get("kelas", _selected_kelas)),
-		str(payload.get("absen", ""))
-	)
+	# Spreadsheet mengizinkan (siswa baru atau baru direset oleh Admin) -> hapus sisa cache lokal lama bila ada
+	GameSession.forget_saved_profile_for(p_kelas, p_nama, p_mode)
+	_begin_verified_session(p_nama, p_kelas, p_absen)
+
+
+func _resume_verified_session(nama_val: String, kelas_val: String, mode_val: String) -> void:
+	_error_panel.visible = false
+	if GameSession.resume_saved_session_for(kelas_val, nama_val, mode_val):
+		SceneRouter.go_to_hub()
 
 
 func _begin_verified_session(nama_val: String, kelas_val: String, absen_str: String) -> void:

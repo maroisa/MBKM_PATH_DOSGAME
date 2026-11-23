@@ -247,7 +247,11 @@ func _test_mg5_simulation() -> void:
 
 func _test_save_roundtrip_and_csv() -> void:
 	var test_path: String = "user://test_dos_save.json"
+	var test_profiles: String = "user://test_dos_profiles.json"
+	var orig_save_path: String = GameSession.save_path
+	var orig_profiles_path: String = GameSession.profiles_path
 	GameSession.save_path = test_path
+	GameSession.profiles_path = test_profiles
 	GameSession.start_new_session("Rina Putri", "PPLG B", "12")
 	var log_entry: Dictionary = GameSession.record_attempt(
 		"mg1", "mg1_l1", "Misi 1", "MOVE D:\\Kerja\\Arsip D:\\Backup",
@@ -271,11 +275,13 @@ func _test_save_roundtrip_and_csv() -> void:
 	assert_true(csv.contains("REKAP_SISWA") and csv.contains("LOG_JAWABAN_DETAIL"), "CSV harus memuat 2 bagian utama")
 	assert_true(csv.contains("Rina Putri") and csv.contains("?ode.exe"), "CSV harus memuat nama & jawaban siswa")
 
-	for p: String in [test_path, test_path + ".bak", test_path + ".tmp"]:
+	for p: String in [test_path, test_path + ".bak", test_path + ".tmp", test_profiles, test_profiles + ".bak", test_profiles + ".tmp"]:
 		var gp: String = ProjectSettings.globalize_path(p)
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(gp)
-	GameSession.clear_session()
+	GameSession.save_path = orig_save_path
+	GameSession.profiles_path = orig_profiles_path
+	GameSession.clear_session(true)
 
 
 func _test_pretest_posttest_controls() -> void:
@@ -335,7 +341,7 @@ func _test_pretest_posttest_controls() -> void:
 
 func _test_ui_interactions_and_states() -> void:
 	# 1. Login screen: PPLG A dropdown 36 siswa (dari JSON roster), validasi 1x Spreadsheet, & fallback manual PPLG B
-	GameSession.clear_session()
+	GameSession.clear_session(true)
 	var pplga_roster: Array[Dictionary] = GameConfig.get_students_for_class("PPLG A")
 	assert_eq(pplga_roster.size(), 36, "Roster JSON PPLG A harus memuat tepat 36 siswa")
 	if pplga_roster.size() == 36:
@@ -365,20 +371,40 @@ func _test_ui_interactions_and_states() -> void:
 	login_inst.call("_on_start_pressed")
 	assert_true((login_inst.get("_error_panel") as Control).visible, "Belum memilih siswa di dropdown PPLG A harus memunculkan error")
 
-	# Buka dropdown, filter pencarian, dan pilih siswa absen 4
+	# Buka dropdown, pastikan scroll wheel sampai mentok bawah TIDAK menutup dropdown, filter pencarian, dan pilih absen 4
 	login_inst.call("_open_student_dropdown")
 	await get_tree().process_frame
 	assert_true((login_inst.get("_dropdown_backdrop") as Control).visible, "Overlay dropdown siswa harus tampil saat dibuka")
+	var wheel_dn := InputEventMouseButton.new()
+	wheel_dn.pressed = true
+	wheel_dn.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	login_inst.call("_on_dropdown_backdrop_gui_input", wheel_dn)
+	assert_true((login_inst.get("_dropdown_backdrop") as Control).visible, "Scroll wheel ke bawah sampai mentok tidak boleh menutup dropdown siswa")
 	login_inst.call("_populate_dropdown_items", "ARYA")
 	assert_eq((login_inst.get("_dropdown_list_vbox") as Node).get_child_count(), 1, "Pencarian 'ARYA' harus menyaring tepat 1 siswa")
 	assert_true(bool(login_inst.call("select_student_by_absen", 4)), "select_student_by_absen(4) harus berhasil memilih ARYA MUSTOFA")
 	assert_true((login_inst.get("_student_dropdown_btn") as Button).text.contains("ARYA MUSTOFA"), "Tombol dropdown harus menampilkan nama siswa terpilih")
 	login_inst.call("_close_student_dropdown")
 
-	# Simulasikan balasan Spreadsheet: nama sudah dipakai -> harus memunculkan notif error & tetap di login
-	login_inst.call("_on_student_check_completed", false, true, "Nama \"ARYA MUSTOFA\" (Absen 4) sudah dipakai di Spreadsheet.", {"nama": "ARYA MUSTOFA", "kelas": "PPLG A", "absen": "4"})
-	assert_true((login_inst.get("_error_panel") as Control).visible, "Nama sudah dipakai harus memunculkan panel notifikasi error")
+	# Simulasikan balasan Spreadsheet: nama sudah dipakai (tanpa sesi lokal) -> harus memunculkan notif error & tetap di login
+	login_inst.call("_on_student_check_completed", false, true, "Nama \"ARYA MUSTOFA\" (Absen 4) sudah dipakai di Spreadsheet.", {"nama": "ARYA MUSTOFA", "kelas": "PPLG A", "absen": "4", "mode": "PRETEST"})
+	assert_true((login_inst.get("_error_panel") as Control).visible, "Nama sudah dipakai (tanpa sesi lokal) harus memunculkan panel notifikasi error")
 	assert_true((login_inst.get("_error_lbl") as Label).text.to_lower().contains("sudah dipakai"), "Notifikasi harus menyebutkan nama sudah dipakai")
+
+	# Uji tanpa banner 'LANJUTKAN PRE-TEST' + auto-resume saat siswa dengan sesi tersimpan memilih namanya sendiri
+	GameSession.start_new_session("ARYA MUSTOFA", "PPLG A", "4", "PRETEST")
+	GameSession.record_attempt("mg1", "mg1_l1", "Misi 1", "MOVE", "MOVE", true, 1, 100, 3.0)
+	var saved_sid: String = GameSession.session_id
+	GameSession.clear_session(false) # Simulasi keluar/ganti siswa tapi profil lokal tetap tersimpan
+	assert_true(GameSession.has_saved_session_for("PPLG A", "ARYA MUSTOFA", "4", "PRETEST"), "Profil lokal ARYA MUSTOFA harus tersimpan untuk auto-resume")
+	assert_true(GameSession.resume_saved_session_for("PPLG A", "ARYA MUSTOFA", "PRETEST"), "resume_saved_session_for harus memulihkan sesi ARYA MUSTOFA")
+	assert_eq(GameSession.session_id, saved_sid, "Auto-resume harus menjaga session_id & progres sebelumnya tanpa reset")
+	assert_true(GameSession.level_answered.has("mg1_l1"), "Auto-resume harus mempertahankan soal yang sudah terjawab")
+	login_inst.call("_update_dropdown_trigger_display")
+	assert_eq((login_inst.get("_start_btn") as Button).text, "LANJUTKAN MAIN", "Tombol CTA harus otomatis berubah menjadi LANJUTKAN MAIN saat siswa punya sesi lokal")
+	for btn_n: Node in login_inst.find_children("*", "Button", true, false):
+		assert_true(not (btn_n as Button).text.begins_with("LANJUTKAN PRE-TEST"), "Banner tombol LANJUTKAN PRE-TEST harus sudah dihapus dari login_screen")
+	GameSession.clear_session(true)
 
 	# Uji pindah ke PPLG B -> mode manual fallback + validasi absen
 	login_inst.call("_on_select_kelas", "PPLG B")
