@@ -1,8 +1,8 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cloc1qvcen0a8"]
 
-[ext_resource type="Script" path="res://scenes/ui/final_report.gd" id="1_rep"]
+[ext_resource type="Script" uid="uid://bryfb0bw4hn13" path="res://scenes/ui/final_report.gd" id="1_rep"]
 
-[node name="FinalReport" type="Control"]
+[node name="FinalReport" type="Control" unique_id=948917297]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

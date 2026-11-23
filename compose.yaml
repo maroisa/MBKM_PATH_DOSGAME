@@ -1,0 +1,6 @@
+services:
+  dosgame:
+    build: .
+    restart: unless-stopped
+    ports:
+      - 3004:80

@@ -14,6 +14,8 @@ config/name="DOS Rescue: Media Pembelajaran CLI"
 config/description="Media pembelajaran interaktif berbasis web untuk materi Disk Operating System (DOS / Windows CMD)."
 run/main_scene="res://scenes/ui/login_screen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+boot_splash/bg_color=Color(0.071402065, 0.056798175, 0.09326478, 1)
+boot_splash/show_image=false
 config/icon="res://icon.svg"
 
 [autoload]
